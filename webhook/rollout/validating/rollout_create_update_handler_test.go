@@ -344,4 +344,198 @@ func TestRolloutValidateCreate(t *testing.T) {
 
 func TestRolloutValidateUpdate(t *testing.T) {
 	RegisterFailHandler(Fail)
+
+	cases := []struct {
+		Name         string
+		Succeed      bool
+		GetOldObject func() client.Object
+		GetNewObject func() client.Object
+	}{
+		{
+			Name:    "Normal case",
+			Succeed: true,
+			GetOldObject: func() client.Object {
+				object := rollout.DeepCopy()
+				return object
+			},
+			GetNewObject: func() client.Object {
+				object := rollout.DeepCopy()
+				object.Spec.Strategy.Canary.Steps[0].Weight = 5
+				return object
+			},
+		},
+		{
+			Name:    "Rollout is progressing, but spec not changed",
+			Succeed: true,
+			GetOldObject: func() client.Object {
+				object := rollout.DeepCopy()
+				object.Status.Phase = appsv1alpha1.RolloutPhaseProgressing
+				return object
+			},
+			GetNewObject: func() client.Object {
+				object := rollout.DeepCopy()
+				object.Status.Phase = appsv1alpha1.RolloutPhaseProgressing
+				object.Status.CanaryStatus.CurrentStepIndex = 1
+				return object
+			},
+		},
+		{
+			Name:    "Rollout is progressing, and spec changed",
+			Succeed: false,
+			GetOldObject: func() client.Object {
+				object := rollout.DeepCopy()
+				object.Status.Phase = appsv1alpha1.RolloutPhaseProgressing
+				return object
+			},
+			GetNewObject: func() client.Object {
+				object := rollout.DeepCopy()
+				object.Status.Phase = appsv1alpha1.RolloutPhaseProgressing
+				object.Spec.Strategy.Canary.Steps[0].Weight = 5
+				return object
+			},
+		},
+		{
+			Name:    "Rollout is terminating, and spec changed",
+			Succeed: false,
+			GetOldObject: func() client.Object {
+				object := rollout.DeepCopy()
+				object.Status.Phase = appsv1alpha1.RolloutPhaseTerminating
+				return object
+			},
+			GetNewObject: func() client.Object {
+				object := rollout.DeepCopy()
+				object.Status.Phase = appsv1alpha1.RolloutPhaseTerminating
+				object.Spec.Strategy.Canary.Steps[0].Weight = 5
+				return object
+			},
+		},
+		{
+			Name:    "Rollout is initial, and spec changed",
+			Succeed: true,
+			GetOldObject: func() client.Object {
+				object := rollout.DeepCopy()
+				object.Status.Phase = appsv1alpha1.RolloutPhaseInitial
+				return object
+			},
+			GetNewObject: func() client.Object {
+				object := rollout.DeepCopy()
+				object.Status.Phase = appsv1alpha1.RolloutPhaseInitial
+				object.Spec.Strategy.Canary.Steps[0].Weight = 5
+				return object
+			},
+		},
+		{
+			Name:    "Rollout is healthy, and spec changed",
+			Succeed: true,
+			GetOldObject: func() client.Object {
+				object := rollout.DeepCopy()
+				object.Status.Phase = appsv1alpha1.RolloutPhaseHealthy
+				return object
+			},
+			GetNewObject: func() client.Object {
+				object := rollout.DeepCopy()
+				object.Status.Phase = appsv1alpha1.RolloutPhaseHealthy
+				object.Spec.Strategy.Canary.Steps[0].Weight = 5
+				return object
+			},
+		},
+		{
+			Name:    "Rollout canary state: paused -> completed",
+			Succeed: true,
+			GetOldObject: func() client.Object {
+				object := rollout.DeepCopy()
+				object.Status.CanaryStatus.CurrentStepState = appsv1alpha1.CanaryStepStatePaused
+				return object
+			},
+			GetNewObject: func() client.Object {
+				object := rollout.DeepCopy()
+				object.Status.CanaryStatus.CurrentStepState = appsv1alpha1.CanaryStepStateCompleted
+				return object
+			},
+		},
+		{
+			Name:    "Rollout canary state: completed -> completed",
+			Succeed: true,
+			GetOldObject: func() client.Object {
+				object := rollout.DeepCopy()
+				object.Status.CanaryStatus.CurrentStepState = appsv1alpha1.CanaryStepStateCompleted
+				return object
+			},
+			GetNewObject: func() client.Object {
+				object := rollout.DeepCopy()
+				object.Status.CanaryStatus.CurrentStepState = appsv1alpha1.CanaryStepStateCompleted
+				return object
+			},
+		},
+		{
+			Name:    "Rollout canary state: upgrade -> completed",
+			Succeed: false,
+			GetOldObject: func() client.Object {
+				object := rollout.DeepCopy()
+				object.Status.CanaryStatus.CurrentStepState = appsv1alpha1.CanaryStepStateUpgrade
+				return object
+			},
+			GetNewObject: func() client.Object {
+				object := rollout.DeepCopy()
+				object.Status.CanaryStatus.CurrentStepState = appsv1alpha1.CanaryStepStateCompleted
+				return object
+			},
+		},
+		{
+			Name:    "Rollout canary state: routing -> completed",
+			Succeed: false,
+			GetOldObject: func() client.Object {
+				object := rollout.DeepCopy()
+				object.Status.CanaryStatus.CurrentStepState = appsv1alpha1.CanaryStepStateTrafficRouting
+				return object
+			},
+			GetNewObject: func() client.Object {
+				object := rollout.DeepCopy()
+				object.Status.CanaryStatus.CurrentStepState = appsv1alpha1.CanaryStepStateCompleted
+				return object
+			},
+		},
+		{
+			Name:    "Rollout canary state: analysis -> completed",
+			Succeed: false,
+			GetOldObject: func() client.Object {
+				object := rollout.DeepCopy()
+				object.Status.CanaryStatus.CurrentStepState = appsv1alpha1.CanaryStepStateMetricsAnalysis
+				return object
+			},
+			GetNewObject: func() client.Object {
+				object := rollout.DeepCopy()
+				object.Status.CanaryStatus.CurrentStepState = appsv1alpha1.CanaryStepStateCompleted
+				return object
+			},
+		},
+		{
+			Name:    "Rollout canary state: others -> completed",
+			Succeed: false,
+			GetOldObject: func() client.Object {
+				object := rollout.DeepCopy()
+				object.Status.CanaryStatus.CurrentStepState = "Whatever"
+				return object
+			},
+			GetNewObject: func() client.Object {
+				object := rollout.DeepCopy()
+				object.Status.CanaryStatus.CurrentStepState = appsv1alpha1.CanaryStepStateCompleted
+				return object
+			},
+		},
+	}
+
+	for _, cs := range cases {
+		t.Run(cs.Name, func(t *testing.T) {
+			oldObject := cs.GetOldObject()
+			newObject := cs.GetNewObject()
+			cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(oldObject).Build()
+			handler := RolloutCreateUpdateHandler{
+				Client: cli,
+			}
+			errList := handler.validateRolloutUpdate(oldObject.(*appsv1alpha1.Rollout), newObject.(*appsv1alpha1.Rollout))
+			t.Log(errList)
+			Expect(len(errList) == 0).Should(Equal(cs.Succeed))
+		})
+	}
 }
