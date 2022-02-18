@@ -34,6 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/util/retry"
 	utilpointer "k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -203,6 +204,24 @@ var _ = SIGDescribe("Rollout", func() {
 			By("Creating Rollout...")
 			rollout := &rolloutsv1alpha1.Rollout{}
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
+			replicas := intstr.FromInt(2)
+			rollout.Spec.Strategy.Canary.Steps = []rolloutsv1alpha1.CanaryStep{
+				{
+					Weight:   20,
+					Replicas: &replicas,
+					Pause:    rolloutsv1alpha1.RolloutPause{},
+				},
+				{
+					Weight: 60,
+					Pause: rolloutsv1alpha1.RolloutPause{
+						Duration: utilpointer.Int32(10),
+					},
+				},
+				{
+					Weight: 100,
+					Pause:  rolloutsv1alpha1.RolloutPause{},
+				},
+			}
 			CreateObject(rollout)
 
 			By("Creating workload and waiting for all pods ready...")
@@ -270,19 +289,19 @@ var _ = SIGDescribe("Rollout", func() {
 			// canary deployment
 			cWorkload, err := GetCanaryDeployment(workload)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(*cWorkload.Spec.Replicas).Should(BeNumerically("==", 1))
-			Expect(cWorkload.Status.AvailableReplicas).Should(BeNumerically("==", 1))
+			Expect(*cWorkload.Spec.Replicas).Should(BeNumerically("==", 2))
+			Expect(cWorkload.Status.AvailableReplicas).Should(BeNumerically("==", 2))
 
 			// resume rollout canary
 			ResumeRolloutCanary(rollout.Name)
 			By("check rollout canary status success, resume rollout, and wait rollout canary complete")
-			WaitRolloutCanaryStepPaused(rollout.Name, 4)
+			WaitRolloutCanaryStepPaused(rollout.Name, 2)
 
 			// check stable, canary service & ingress
 			// canary ingress
 			cIngress = &netv1.Ingress{}
 			Expect(GetObject(rollout.Status.CanaryStatus.CanaryService, cIngress)).NotTo(HaveOccurred())
-			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", rollout.Spec.Strategy.Canary.Steps[4].Weight)))
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", rollout.Spec.Strategy.Canary.Steps[2].Weight)))
 			// canary deployment
 			cWorkload, err = GetCanaryDeployment(workload)
 			Expect(err).NotTo(HaveOccurred())
@@ -299,12 +318,6 @@ var _ = SIGDescribe("Rollout", func() {
 			ResumeRolloutCanary(rollout.Name)
 			By("check rollout canary status success, resume rollout, and wait rollout canary complete")
 			WaitRolloutStatusPhase(rollout.Name, rolloutsv1alpha1.RolloutPhaseHealthy)
-
-			// check progressing succeed
-			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond := util.GetRolloutCondition(rollout.Status, rolloutsv1alpha1.RolloutConditionProgressing)
-			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonSucceeded))
-			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 
 			// check service & ingress & deployment
 			// ingress
@@ -327,6 +340,23 @@ var _ = SIGDescribe("Rollout", func() {
 					Expect(env.Value).Should(Equal("version2"))
 				}
 			}
+			// check progressing succeed
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			cond := util.GetRolloutCondition(rollout.Status, rolloutsv1alpha1.RolloutConditionProgressing)
+			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonSucceeded))
+			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(rollout.Status.CanaryStatus.ObservedWorkloadGeneration).Should(BeNumerically("==", workload.Generation))
+
+			// scale up replicas 5 -> 6
+			workload.Spec.Replicas = utilpointer.Int32(6)
+			UpdateDeployment(workload)
+			By("Update deployment replicas from(5) -> to(6)")
+			time.Sleep(time.Second * 2)
+
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(rollout.Status.CanaryStatus.ObservedWorkloadGeneration).Should(BeNumerically("==", workload.Generation))
 		})
 
 		It("V1->V2: Percentage, 20%, and rollback(v1)", func() {
@@ -552,12 +582,6 @@ var _ = SIGDescribe("Rollout", func() {
 			WaitRolloutStatusPhase(rollout.Name, rolloutsv1alpha1.RolloutPhaseHealthy)
 			time.Sleep(time.Second * 3)
 
-			// check progressing succeed
-			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond := util.GetRolloutCondition(rollout.Status, rolloutsv1alpha1.RolloutConditionProgressing)
-			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonSucceeded))
-			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
-
 			// check service & ingress & deployment
 			// ingress
 			Expect(GetObject(ingress.Name, ingress)).NotTo(HaveOccurred())
@@ -579,6 +603,13 @@ var _ = SIGDescribe("Rollout", func() {
 					Expect(env.Value).Should(Equal("version3"))
 				}
 			}
+			// check progressing succeed
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			cond := util.GetRolloutCondition(rollout.Status, rolloutsv1alpha1.RolloutConditionProgressing)
+			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonSucceeded))
+			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(rollout.Status.CanaryStatus.ObservedWorkloadGeneration).Should(BeNumerically("==", workload.Generation))
 		})
 
 		It("V1->V2: Percentage, 20%,40%,60%,80%,100% Succeeded, and scale up replicas from(5) -> to(10)", func() {
@@ -683,12 +714,6 @@ var _ = SIGDescribe("Rollout", func() {
 			WaitRolloutStatusPhase(rollout.Name, rolloutsv1alpha1.RolloutPhaseHealthy)
 			time.Sleep(time.Second * 3)
 
-			// check progressing succeed
-			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond := util.GetRolloutCondition(rollout.Status, rolloutsv1alpha1.RolloutConditionProgressing)
-			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonSucceeded))
-			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
-
 			// check service & ingress & deployment
 			// ingress
 			Expect(GetObject(ingress.Name, ingress)).NotTo(HaveOccurred())
@@ -710,6 +735,13 @@ var _ = SIGDescribe("Rollout", func() {
 					Expect(env.Value).Should(Equal("version2"))
 				}
 			}
+			// check progressing succeed
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			cond := util.GetRolloutCondition(rollout.Status, rolloutsv1alpha1.RolloutConditionProgressing)
+			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonSucceeded))
+			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(rollout.Status.CanaryStatus.ObservedWorkloadGeneration).Should(BeNumerically("==", workload.Generation))
 		})
 
 		It("V1->V2: Percentage, 20%,40%,60%,80%,100% Succeeded, and scale down replicas from(10) -> to(5)", func() {
@@ -815,12 +847,6 @@ var _ = SIGDescribe("Rollout", func() {
 			WaitRolloutStatusPhase(rollout.Name, rolloutsv1alpha1.RolloutPhaseHealthy)
 			time.Sleep(time.Second * 3)
 
-			// check progressing succeed
-			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond := util.GetRolloutCondition(rollout.Status, rolloutsv1alpha1.RolloutConditionProgressing)
-			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonSucceeded))
-			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
-
 			// check service & ingress & deployment
 			// ingress
 			Expect(GetObject(ingress.Name, ingress)).NotTo(HaveOccurred())
@@ -842,6 +868,13 @@ var _ = SIGDescribe("Rollout", func() {
 					Expect(env.Value).Should(Equal("version2"))
 				}
 			}
+			// check progressing succeed
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			cond := util.GetRolloutCondition(rollout.Status, rolloutsv1alpha1.RolloutConditionProgressing)
+			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonSucceeded))
+			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(rollout.Status.CanaryStatus.ObservedWorkloadGeneration).Should(BeNumerically("==", workload.Generation))
 		})
 
 		It("V1->V2: Percentage, 20%,40%,60%,80%,100% Succeeded, paused and resume", func() {
@@ -936,11 +969,6 @@ var _ = SIGDescribe("Rollout", func() {
 			rollout.Spec.Strategy.Paused = false
 			UpdateRollout(rollout)
 			WaitRolloutStatusPhase(rollout.Name, rolloutsv1alpha1.RolloutPhaseHealthy)
-			// check progressing succeed
-			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond = util.GetRolloutCondition(rollout.Status, rolloutsv1alpha1.RolloutConditionProgressing)
-			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonSucceeded))
-			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 
 			// check service & ingress & deployment
 			// ingress
@@ -963,6 +991,13 @@ var _ = SIGDescribe("Rollout", func() {
 					Expect(env.Value).Should(Equal("version2"))
 				}
 			}
+			// check progressing succeed
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			cond = util.GetRolloutCondition(rollout.Status, rolloutsv1alpha1.RolloutConditionProgressing)
+			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonSucceeded))
+			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(rollout.Status.CanaryStatus.ObservedWorkloadGeneration).Should(BeNumerically("==", workload.Generation))
 		})
 
 		It("V1->V2: Percentage, 20%,40%,60%,80%,100%, progressing, but delete rollout crd", func() {
@@ -1104,7 +1139,7 @@ var _ = SIGDescribe("Rollout", func() {
 			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
 			UpdateDeployment(workload)
 			By("Update deployment image from(v1.0.0) -> to(failed)")
-			time.Sleep(time.Hour * 2)
+			time.Sleep(time.Second * 2)
 
 			// check workload status & paused
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
@@ -1130,11 +1165,6 @@ var _ = SIGDescribe("Rollout", func() {
 
 			// wait rollout complete
 			WaitRolloutStatusPhase(rollout.Name, rolloutsv1alpha1.RolloutPhaseHealthy)
-			// check progressing succeed
-			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond := util.GetRolloutCondition(rollout.Status, rolloutsv1alpha1.RolloutConditionProgressing)
-			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonSucceeded))
-			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 
 			// check service & ingress & deployment
 			// ingress
@@ -1157,6 +1187,13 @@ var _ = SIGDescribe("Rollout", func() {
 					Expect(env.Value).Should(Equal("version3"))
 				}
 			}
+			// check progressing succeed
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			cond := util.GetRolloutCondition(rollout.Status, rolloutsv1alpha1.RolloutConditionProgressing)
+			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonSucceeded))
+			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(rollout.Status.CanaryStatus.ObservedWorkloadGeneration).Should(BeNumerically("==", workload.Generation))
 		})
 	})
 })

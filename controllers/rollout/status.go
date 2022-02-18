@@ -40,6 +40,7 @@ func (r *RolloutReconciler) checkRolloutStatus(rollout *appsv1alpha1.Rollout) er
 	} else if newStatus.Phase == "" {
 		newStatus.Phase = appsv1alpha1.RolloutPhaseInitial
 	}
+	// get ref workload
 	workload, err := r.Finder.GetWorkloadForRef(rollout.Namespace, rollout.Spec.ObjectRef.WorkloadRef)
 	if err != nil {
 		klog.Errorf("rollout(%s/%s) get workload failed: %s", rollout.Namespace, rollout.Name, err.Error())
@@ -50,9 +51,14 @@ func (r *RolloutReconciler) checkRolloutStatus(rollout *appsv1alpha1.Rollout) er
 	} else if workload != nil {
 		newStatus.StableRevision = workload.StableRevision
 		newStatus.CanaryRevision = workload.CanaryRevision
+		// update workload generation to canaryStatus.ObservedWorkloadGeneration
+		// rollout is a target ref bypass, so there needs to be a field to identify the rollout execution process or results,
+		// which version of deployment is targeted, ObservedWorkloadGeneration that is to compare with the workload generation
+		if newStatus.CanaryStatus != nil && newStatus.CanaryStatus.CanaryRevision != "" &&
+			newStatus.CanaryStatus.CanaryRevision == workload.CanaryRevision {
+			newStatus.CanaryStatus.ObservedWorkloadGeneration = workload.Generation
+		}
 	}
-	klog.Infof("rollout(%s/%s) workload(%s) StableRevision(%s) UpdateRevision(%s)",
-		rollout.Namespace, rollout.Name, rollout.Spec.ObjectRef.WorkloadRef.Name, newStatus.StableRevision, newStatus.CanaryRevision)
 
 	switch newStatus.Phase {
 	case appsv1alpha1.RolloutPhaseInitial:
@@ -62,7 +68,7 @@ func (r *RolloutReconciler) checkRolloutStatus(rollout *appsv1alpha1.Rollout) er
 			newStatus.Message = "rollout is healthy"
 		}
 	case appsv1alpha1.RolloutPhaseHealthy:
-		// from healthy to rollout
+		// from healthy to progressing
 		if workload.InRolloutProgressing {
 			klog.Infof("rollout(%s/%s) status phase from(%s) -> to(%s)", rollout.Namespace, rollout.Name, appsv1alpha1.RolloutPhaseHealthy, appsv1alpha1.RolloutPhaseProgressing)
 			newStatus.Phase = appsv1alpha1.RolloutPhaseProgressing
@@ -115,5 +121,4 @@ func resetStatus(status *appsv1alpha1.RolloutStatus) {
 	util.RemoveRolloutCondition(status, appsv1alpha1.RolloutConditionProgressing)
 	status.Phase = appsv1alpha1.RolloutPhaseInitial
 	status.Message = "workload not found"
-	//status.CanaryStatus = nil
 }

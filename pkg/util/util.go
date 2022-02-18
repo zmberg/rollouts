@@ -27,14 +27,15 @@ import (
 )
 
 const (
-	InRolloutProgressingAnnotation = "rollouts.kruise.io/in-rollout-progressing"
-	KruiseRolloutFinalizer         = "finalizers.rollouts.kruise.io"
+	// InRolloutProgressingAnnotation marks workload as entering the rollout progressing process
+	//and does not allow paused=false during this process
+	InRolloutProgressingAnnotation = "rollouts.kruise.io/in-progressing"
+	KruiseRolloutFinalizer         = "rollouts.kruise.io/rollout"
 )
 
-// annotation[InRolloutProgressingAnnotation] = rolloutState
+// RolloutState is annotation[rollouts.kruise.io/in-progressing] value
 type RolloutState struct {
 	RolloutName string
-	RolloutDone bool
 }
 
 func GetRolloutState(annotations map[string]string) (*RolloutState, error) {

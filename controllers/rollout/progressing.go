@@ -44,7 +44,7 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *appsv1alpha1.Ro
 		klog.Infof("rollout(%s/%s) is Progressing, and in reason(%s)", rollout.Namespace, rollout.Name, cond.Reason)
 		// new canaryStatus
 		newStatus.CanaryStatus = &appsv1alpha1.CanaryStatus{}
-		done, msg, err := r.doProgressingInitializing(rollout)
+		done, _, err := r.doProgressingInitializing(rollout, newStatus)
 		if err != nil {
 			klog.Errorf("rollout(%s/%s) doProgressingInitializing error(%s)", rollout.Namespace, rollout.Name, err.Error())
 			return nil, err
@@ -52,9 +52,8 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *appsv1alpha1.Ro
 			progressingStateTransition(newStatus, corev1.ConditionFalse, appsv1alpha1.ProgressingReasonInRolling, "rollout is InRolling")
 		} else {
 			// Incomplete, recheck
-			expectedTime := time.Now().Add(5 * time.Second)
+			expectedTime := time.Now().Add(3 * time.Second)
 			recheckTime = &expectedTime
-			progressingStateTransition(newStatus, corev1.ConditionFalse, appsv1alpha1.ProgressingReasonInitializing, msg)
 			klog.Infof("rollout(%s/%s) doProgressingInitializing is incomplete, and recheck(%s)", rollout.Namespace, rollout.Name, expectedTime.String())
 		}
 
@@ -67,7 +66,6 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *appsv1alpha1.Ro
 		} else if newStatus.CanaryStatus.CanaryRevision != "" && newStatus.CanaryRevision != newStatus.CanaryStatus.CanaryRevision {
 			klog.Infof("rollout(%s/%s) workload continuous publishing canaryRevision from(%s) -> to(%s), then restart publishing",
 				rollout.Namespace, rollout.Name, newStatus.CanaryStatus.CanaryRevision, newStatus.CanaryRevision)
-			// delete batchRelease
 			done, err := r.doProgressingReset(rollout, newStatus)
 			if err != nil {
 				klog.Errorf("rollout(%s/%s) doProgressingReset failed: %s", rollout.Namespace, rollout.Name, err.Error())
@@ -146,14 +144,11 @@ func progressingStateTransition(status *appsv1alpha1.RolloutStatus, condStatus c
 	util.SetRolloutCondition(status, cond)
 }
 
-func (r *RolloutReconciler) doProgressingInitializing(rollout *appsv1alpha1.Rollout) (bool, string, error) {
+func (r *RolloutReconciler) doProgressingInitializing(rollout *appsv1alpha1.Rollout, newStatus *appsv1alpha1.RolloutStatus) (bool, string, error) {
+	// canary release
 	if rollout.Spec.Strategy.Type == "" || rollout.Spec.Strategy.Type == appsv1alpha1.RolloutStrategyCanary {
-		if ok, msg, err := r.verifyCanaryStrategy(rollout); !ok {
-			return ok, msg, err
-		}
-		klog.Infof("verify rollout(%s/%s) CanaryStrategy success", rollout.Namespace, rollout.Name)
+		return r.verifyCanaryStrategy(rollout, newStatus)
 	}
-
 	return true, "", nil
 }
 
@@ -170,13 +165,11 @@ func (r *RolloutReconciler) doProgressingInRolling(rollout *appsv1alpha1.Rollout
 	}
 
 	rolloutCon := &rolloutContext{
-		Client:         r.Client,
-		rollout:        rollout,
-		newStatus:      newStatus,
-		stableRevision: newStatus.StableRevision,
-		canaryRevision: newStatus.CanaryRevision,
-		workload:       workload,
-		batchControl:   batchrelease.NewInnerBatchController(r.Client, rollout),
+		Client:       r.Client,
+		rollout:      rollout,
+		newStatus:    newStatus,
+		workload:     workload,
+		batchControl: batchrelease.NewInnerBatchController(r.Client, rollout),
 	}
 	err = rolloutCon.reconcile()
 	if err != nil {
@@ -218,7 +211,7 @@ func (r *RolloutReconciler) doProgressingReset(rollout *appsv1alpha1.Rollout, ne
 	return true, nil
 }
 
-func (r *RolloutReconciler) verifyCanaryStrategy(rollout *appsv1alpha1.Rollout) (bool, string, error) {
+func (r *RolloutReconciler) verifyCanaryStrategy(rollout *appsv1alpha1.Rollout, newStatus *appsv1alpha1.RolloutStatus) (bool, string, error) {
 	canary := rollout.Spec.Strategy.Canary
 	// Traffic routing
 	if canary.TrafficRouting != nil {
@@ -227,13 +220,22 @@ func (r *RolloutReconciler) verifyCanaryStrategy(rollout *appsv1alpha1.Rollout) 
 		}
 	}
 
+	// It is not allowed to modify the rollout.spec in progressing phase (validate webhook rollout),
+	// but in many scenarios the user may modify the workload and rollout spec at the same time,
+	// and there is a possibility that the workload is released first, and due to some network or other reasons the rollout spec is delayed by a few seconds,
+	// so this is mainly compatible with this scenario.
+	cond := util.GetRolloutCondition(*newStatus, appsv1alpha1.RolloutConditionProgressing)
+	if verifyTime := cond.LastUpdateTime.Add(time.Second * 3); verifyTime.After(time.Now()) {
+		klog.Infof("verify rollout(%s/%s) TrafficRouting done, and wait a moment", rollout.Namespace, rollout.Name)
+		return false, "", nil
+	}
+
 	// canary steps
 	if len(canary.Steps) != 0 {
 		// create batch release crd
 		batchControl := batchrelease.NewInnerBatchController(r.Client, rollout)
 		return batchControl.VerifyBatchInitial()
 	}
-
 	return true, "", nil
 }
 

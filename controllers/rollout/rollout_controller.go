@@ -55,8 +55,6 @@ type RolloutReconciler struct {
 //+kubebuilder:rbac:groups=core,resources=services/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=rollouts.kruise.io,resources=batchreleases,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=rollouts.kruise.io,resources=batchreleases/status,verbs=get;update;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -82,9 +80,9 @@ func (r *RolloutReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	// handle finalizer
-	doneReconcile, retErr := r.handleFinalizer(rollout)
-	if doneReconcile {
-		return ctrl.Result{}, retErr
+	err = r.handleFinalizer(rollout)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 	// check rollout status, and update
 	err = r.checkRolloutStatus(rollout)

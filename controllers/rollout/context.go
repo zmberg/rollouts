@@ -34,10 +34,6 @@ type rolloutContext struct {
 
 	newStatus *appsv1alpha1.RolloutStatus
 
-	stableRevision string
-
-	canaryRevision string
-
 	isComplete bool
 
 	stableService *corev1.Service

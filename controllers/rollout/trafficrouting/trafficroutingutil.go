@@ -22,5 +22,5 @@ type TrafficRoutingController interface {
 
 	VerifyTrafficRouting(desiredWeight int32) (bool, error)
 
-	DoFinalising() (bool, error)
+	DoFinalising() error
 }

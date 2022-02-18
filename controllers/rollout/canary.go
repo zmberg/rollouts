@@ -18,7 +18,6 @@ package rollout
 
 import (
 	"context"
-	"encoding/json"
 	"time"
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
@@ -67,7 +66,7 @@ func (r *rolloutContext) runCanary() error {
 			klog.Infof("rollout(%s/%s) step(index:%d) state from(%s) -> to(%s)", r.rollout.Namespace, r.rollout.Name,
 				canaryStatus.CurrentStepIndex, appsv1alpha1.CanaryStepStateTrafficRouting, canaryStatus.CurrentStepState)
 		}
-		expectedTime := time.Now().Add(5 * time.Second)
+		expectedTime := time.Now().Add(3 * time.Second)
 		r.recheckTime = &expectedTime
 
 	case appsv1alpha1.CanaryStepStateMetricsAnalysis:
@@ -96,6 +95,7 @@ func (r *rolloutContext) runCanary() error {
 	case appsv1alpha1.CanaryStepStateCompleted:
 		klog.Infof("rollout(%s/%s) run canary strategy, and state(%s)", r.rollout.Namespace, r.rollout.Name, appsv1alpha1.CanaryStepStateCompleted)
 		if len(r.rollout.Spec.Strategy.Canary.Steps) > int(canaryStatus.CurrentStepIndex+1) {
+			canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
 			canaryStatus.CurrentStepIndex++
 			canaryStatus.CurrentStepState = appsv1alpha1.CanaryStepStateUpgrade
 			klog.Infof("rollout(%s/%s) canary step from(%d) -> to(%d)", r.rollout.Namespace, r.rollout.Name, canaryStatus.CurrentStepIndex-1, canaryStatus.CurrentStepIndex)
@@ -183,8 +183,8 @@ func (r *rolloutContext) doCanaryFinalising() (bool, error) {
 	if r.newStatus.CanaryStatus == nil {
 		return true, nil
 	}
-	// 1. mark rollout process complete, allow workload paused=false in webhook
-	err := r.updateRolloutStateInWorkload(util.RolloutState{RolloutName: r.rollout.Name, RolloutDone: true}, false)
+	// 1. rollout progressing complete, allow workload paused=false in webhook
+	err := r.removeRolloutStateInWorkload()
 	if err != nil {
 		return false, err
 	}
@@ -213,11 +213,7 @@ func (r *rolloutContext) doCanaryFinalising() (bool, error) {
 	} else if !done {
 		return false, nil
 	}
-	// 6. delete rolloutState in workload
-	if err = r.updateRolloutStateInWorkload(util.RolloutState{}, true); err != nil {
-		return false, err
-	}
-	klog.Infof("rollout(%s/%s) DoFinalising batchRelease success", r.rollout.Namespace, r.rollout.Name)
+	klog.Infof("rollout(%s/%s) batchRelease Finalize success", r.rollout.Namespace, r.rollout.Name)
 	return true, nil
 }
 
@@ -228,8 +224,11 @@ func (r *rolloutContext) podRevisionLabelKey() string {
 	return util.RsPodRevisionLabelKey
 }
 
-func (r *rolloutContext) updateRolloutStateInWorkload(state util.RolloutState, isDelete bool) error {
+func (r *rolloutContext) removeRolloutStateInWorkload() error {
 	if r.workload == nil {
+		return nil
+	}
+	if _, ok := r.workload.Annotations[util.InRolloutProgressingAnnotation]; !ok {
 		return nil
 	}
 	var obj client.Object
@@ -240,24 +239,19 @@ func (r *rolloutContext) updateRolloutStateInWorkload(state util.RolloutState, i
 	} else {
 		obj = &apps.Deployment{}
 	}
-	by, _ := json.Marshal(state)
 	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		if err := r.Get(context.TODO(), types.NamespacedName{Name: r.workload.Name, Namespace: r.workload.Namespace}, obj); err != nil {
 			klog.Errorf("getting updated workload(%s.%s) failed: %s", r.workload.Namespace, r.workload.Name, err.Error())
 			return err
 		}
 		annotations := obj.GetAnnotations()
-		if isDelete {
-			delete(annotations, util.InRolloutProgressingAnnotation)
-		} else {
-			annotations[util.InRolloutProgressingAnnotation] = string(by)
-		}
+		delete(annotations, util.InRolloutProgressingAnnotation)
+		obj.SetAnnotations(annotations)
 		return r.Update(context.TODO(), obj)
-	})
-	if err != nil {
+	});if err != nil {
 		klog.Errorf("update rollout(%s/%s) workload(%s) failed: %s", r.rollout.Namespace, r.rollout.Name, r.workload.Name, err.Error())
 		return err
 	}
-	klog.Infof("update rollout(%s/%s) workload(%s) state(%s) delete(%t) success", r.rollout.Namespace, r.rollout.Name, r.workload.Name, string(by), isDelete)
+	klog.Infof("remove rollout(%s/%s) workload(%s) annotation[%s] success", r.rollout.Namespace, r.rollout.Name, r.workload.Name, util.InRolloutProgressingAnnotation)
 	return nil
 }

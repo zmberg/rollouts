@@ -49,7 +49,6 @@ type Workload struct {
 	// indicate whether the workload can enter the rollout process
 	// 1. workload.Spec.Paused = true
 	// 2. the Deployment is not in a stable version (only one version of RS)
-	// 3. workload.Status.UpdateReplicas = 0
 	InRolloutProgressing bool
 }
 
@@ -147,12 +146,15 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *appsv1alpha1.Wor
 		ObjectMeta: stable.ObjectMeta,
 		TypeMeta:   stable.TypeMeta,
 	}
+	// stable replicaSet
 	stableRs, err := r.GetDeploymentStableRs(stable)
 	if err != nil || stableRs == nil {
 		return workload, err
 	}
 	// stable revision
 	workload.StableRevision = stableRs.Labels[RsPodRevisionLabelKey]
+	// canary revision
+	workload.CanaryRevision = ComputeHash(&stable.Spec.Template, nil)
 	// not in rollout progressing
 	if _, ok = workload.Annotations[InRolloutProgressingAnnotation]; !ok {
 		return workload, nil
@@ -168,8 +170,6 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *appsv1alpha1.Wor
 		return workload, nil
 	}
 
-	// canary revision
-	workload.CanaryRevision = ComputeHash(&stable.Spec.Template, nil)
 	// canary workload status
 	canary, err := r.getLatestCanaryDeployment(stable)
 	if err != nil {

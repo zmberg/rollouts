@@ -62,14 +62,12 @@ func (r *RolloutReconciler) doFinalising(rollout *appsv1alpha1.Rollout, newStatu
 	}
 
 	rolloutCon := &rolloutContext{
-		Client:         r.Client,
-		rollout:        rollout,
-		newStatus:      newStatus,
-		stableRevision: newStatus.StableRevision,
-		canaryRevision: newStatus.CanaryRevision,
-		batchControl:   batchrelease.NewInnerBatchController(r.Client, rollout),
-		workload:       workload,
-		isComplete:     isComplete,
+		Client:       r.Client,
+		rollout:      rollout,
+		newStatus:    newStatus,
+		batchControl: batchrelease.NewInnerBatchController(r.Client, rollout),
+		workload:     workload,
+		isComplete:   isComplete,
 	}
 	done, err := rolloutCon.finalising()
 	if err != nil {
@@ -85,7 +83,8 @@ func (r *RolloutReconciler) doFinalising(rollout *appsv1alpha1.Rollout, newStatu
 }
 
 // handle adding and handle finalizer logic, it turns if we should continue to reconcile
-func (r *RolloutReconciler) handleFinalizer(rollout *appsv1alpha1.Rollout) (bool, error) {
+func (r *RolloutReconciler) handleFinalizer(rollout *appsv1alpha1.Rollout) error {
+	// delete rollout crd, remove finalizer
 	if !rollout.DeletionTimestamp.IsZero() {
 		cond := util.GetRolloutCondition(rollout.Status, appsv1alpha1.RolloutConditionTerminating)
 		if cond != nil && cond.Reason == appsv1alpha1.TerminatingReasonCompleted {
@@ -95,23 +94,24 @@ func (r *RolloutReconciler) handleFinalizer(rollout *appsv1alpha1.Rollout) (bool
 				err := r.Update(context.TODO(), rollout)
 				if err != nil {
 					klog.Errorf("remove rollout(%s/%s) finalizer failed: %s", rollout.Namespace, rollout.Name, err.Error())
-					return false, err
+					return err
 				}
 				klog.Infof("remove rollout(%s/%s) finalizer success", rollout.Namespace, rollout.Name)
 			}
-			return true, nil
+			return nil
 		}
-		return false, nil
+		return nil
 	}
 
+	// create rollout crd, add finalizer
 	if !controllerutil.ContainsFinalizer(rollout, util.KruiseRolloutFinalizer) {
 		controllerutil.AddFinalizer(rollout, util.KruiseRolloutFinalizer)
 		err := r.Update(context.TODO(), rollout)
 		if err != nil {
 			klog.Errorf("register rollout(%s/%s) finalizer failed: %s", rollout.Namespace, rollout.Name, err.Error())
-			return false, err
+			return err
 		}
 		klog.Infof("register rollout(%s/%s) finalizer success", rollout.Namespace, rollout.Name)
 	}
-	return false, nil
+	return nil
 }

@@ -10,6 +10,7 @@ spec:
       kind: Deployment
       name: echoserver
   strategy:
+    type: canary
     canary:
       steps:
         - weight: 20

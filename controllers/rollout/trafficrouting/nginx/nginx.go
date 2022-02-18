@@ -20,9 +20,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
-	"time"
-
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/controllers/rollout/trafficrouting"
 	corev1 "k8s.io/api/core/v1"
@@ -33,20 +30,13 @@ import (
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"strconv"
 )
 
 const (
 	nginxIngressAnnotationDefaultPrefix = "nginx.ingress.kubernetes.io"
-
-	k8sIngressClassAnnotation = "kubernetes.io/ingress.class"
-
-	ingressTrafficRoutingState = "rollouts.kruise.io/traffic-routing-state"
+	k8sIngressClassAnnotation           = "kubernetes.io/ingress.class"
 )
-
-type trafficRoutingState struct {
-	UpdateTimestamp metav1.Time `json:"updateTimestamp"`
-	Weight          int32       `json:"weight"`
-}
 
 type nginxController struct {
 	client.Client
@@ -100,17 +90,11 @@ func (r *nginxController) SetRoutes(desiredWeight int32) error {
 	if desiredWeight == currentWeight {
 		return nil
 	}
-	if err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+	if err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		if err := r.Client.Get(context.TODO(), types.NamespacedName{Namespace: canaryIngress.Namespace, Name: canaryIngress.Name}, canaryIngress); err != nil {
 			klog.Errorf("error getting updated ingress(%s/%s) from client", canaryIngress.Namespace, canaryIngress.Name)
 			return err
 		}
-		state := trafficRoutingState{
-			Weight:          desiredWeight,
-			UpdateTimestamp: metav1.Now(),
-		}
-		by, _ := json.Marshal(state)
-		canaryIngress.Annotations[ingressTrafficRoutingState] = string(by)
 		canaryIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)] = fmt.Sprintf("%d", desiredWeight)
 		if err := r.Client.Update(context.TODO(), canaryIngress); err != nil {
 			return err
@@ -131,97 +115,49 @@ func (r *nginxController) VerifyTrafficRouting(desiredWeight int32) (bool, error
 	if err != nil && !errors.IsNotFound(err) {
 		klog.Errorf("rollout(%s/%s) get canary ingress failed: %s", r.conf.RolloutNs, r.conf.RolloutName, err.Error())
 		return false, err
-	} else if errors.IsNotFound(err) {
-		return false, nil
 	}
-	data, ok := canaryIngress.Annotations[ingressTrafficRoutingState]
-	if !ok {
-		return false, nil
-	}
-
-	var state *trafficRoutingState
-	if err = json.Unmarshal([]byte(data), &state); err != nil {
-		klog.Errorf("rollout(%s/%s) Unmarshal annotation[%s] failed: %s", r.conf.RolloutNs, r.conf.RolloutName, ingressTrafficRoutingState, err.Error())
-		return false, err
-	}
-	if state.Weight != desiredWeight {
-		return false, nil
-	}
-
-	// After setting up traffic routing, give the ingress provider 5 seconds to take effect
-	if verifyTime := state.UpdateTimestamp.Add(time.Second * 5); verifyTime.Before(time.Now()) {
-		klog.Infof("rollout(%s/%s) verify routes(%d) success", r.conf.RolloutNs, r.conf.RolloutName, desiredWeight)
-		return true, nil
-	}
-
-	klog.Infof("rollout(%s/%s) verify routes(%d) incomplete, and wait a moment", r.conf.RolloutNs, r.conf.RolloutName, desiredWeight)
-	return false, nil
-}
-
-func (r *nginxController) DoFinalising() (bool, error) {
-	canaryIngress := &netv1.Ingress{}
-	err := r.Get(context.TODO(), types.NamespacedName{Namespace: r.conf.RolloutNs, Name: r.defaultCanaryIngressName()}, canaryIngress)
-	if err != nil {
+	// when desiredWeight == -1, verify whether canary ingress has been deleted
+	if desiredWeight == -1 {
 		if errors.IsNotFound(err) {
+			klog.Infof("rollout(%s/%s) verify canary ingress has been deleted", r.conf.RolloutNs, r.conf.RolloutName)
 			return true, nil
 		}
+		klog.Infof("rollout(%s/%s) verify whether canary ingress has been deleted, but it exist", r.conf.RolloutNs, r.conf.RolloutName)
+		return false, nil
+	}
+
+	// verify set canary ingress desiredWeight
+	if errors.IsNotFound(err) {
+		klog.Infof("rollout(%s/%s) canary ingress not found, and create", r.conf.RolloutNs, r.conf.RolloutName)
+		return false, nil
+	}
+	cWeight := canaryIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]
+	if cWeight != fmt.Sprintf("%d", desiredWeight) {
+		klog.Infof("rollout(%s/%s) verify trafficRouting(%d) invalid, and update", r.conf.RolloutNs, r.conf.RolloutName, desiredWeight)
+		return false, nil
+	}
+	klog.Infof("rollout(%s/%s) verify trafficRouting(%d) success", r.conf.RolloutNs, r.conf.RolloutName, desiredWeight)
+	return true, nil
+}
+
+func (r *nginxController) DoFinalising() error {
+	canaryIngress := &netv1.Ingress{}
+	err := r.Get(context.TODO(), types.NamespacedName{Namespace: r.conf.RolloutNs, Name: r.defaultCanaryIngressName()}, canaryIngress)
+	if err != nil && !errors.IsNotFound(err) {
 		klog.Errorf("rollout(%s/%s) get canary ingress(%s) failed: %s", r.conf.RolloutNs, r.conf.RolloutName, r.defaultCanaryIngressName(), err.Error())
-		return false, err
+		return err
 	}
-
-	var state *trafficRoutingState
-	if data, ok := canaryIngress.Annotations[ingressTrafficRoutingState]; !ok {
-		// immediate delete canary ingress
-		if err = r.Delete(context.TODO(), canaryIngress); err != nil {
-			klog.Errorf("rollout(%s/%s) remove canary ingress(%s) failed: %s", r.conf.RolloutNs, r.conf.RolloutName, canaryIngress.Name, err.Error())
-			return false, err
-		}
-		klog.Infof("rollout(%s/%s) remove canary ingress(%s) success", r.conf.RolloutNs, r.conf.RolloutName, canaryIngress.Name)
-		return true, nil
-	} else {
-		if err = json.Unmarshal([]byte(data), &state); err != nil {
-			klog.Errorf("rollout(%s/%s) Unmarshal annotation[%s] failed: %s", r.conf.RolloutNs, r.conf.RolloutName, ingressTrafficRoutingState, err.Error())
-			return false, err
-		}
-	}
-
-	if state.Weight == 0 {
-		// After setting up traffic routing, give the ingress provider 5 seconds to take effect
-		if verifyTime := state.UpdateTimestamp.Add(time.Second * 5); verifyTime.After(time.Now()) {
-			klog.Infof("rollout(%s/%s) set ingress routes(weight:0) success, and wait a moment", r.conf.RolloutNs, r.conf.RolloutName)
-			return false, nil
-		}
-		if err = r.Delete(context.TODO(), canaryIngress); err != nil {
-			klog.Errorf("rollout(%s/%s) remove canary ingress(%s) failed: %s", r.conf.RolloutNs, r.conf.RolloutName, canaryIngress.Name, err.Error())
-			return false, err
-		}
-		klog.Infof("rollout(%s/%s) remove canary ingress(%s) success", r.conf.RolloutNs, r.conf.RolloutName, canaryIngress.Name)
-		return true, nil
-	}
-
-	// first, set canary ingress weight = 0
-	if err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
-		if err = r.Client.Get(context.TODO(), types.NamespacedName{Namespace: canaryIngress.Namespace, Name: canaryIngress.Name}, canaryIngress); err != nil {
-			klog.Errorf("error getting updated ingress(%s/%s) from client", canaryIngress.Namespace, canaryIngress.Name)
-			return err
-		}
-		state = &trafficRoutingState{
-			Weight:          0,
-			UpdateTimestamp: metav1.Now(),
-		}
-		by, _ := json.Marshal(state)
-		canaryIngress.Annotations[ingressTrafficRoutingState] = string(by)
-		canaryIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)] = fmt.Sprintf("%d", 0)
-		if err = r.Client.Update(context.TODO(), canaryIngress); err != nil {
-			return err
-		}
+	if errors.IsNotFound(err) || !canaryIngress.DeletionTimestamp.IsZero() {
 		return nil
-	}); err != nil {
-		klog.Errorf("rollout(%s/%s) set ingress routes failed: %s", r.conf.RolloutNs, r.conf.RolloutName, err.Error())
-		return false, err
 	}
-	klog.Infof("rollout(%s/%s) set ingress routes(weight:0) success, and wait a moment", r.conf.RolloutNs, r.conf.RolloutName)
-	return false, nil
+
+	// immediate delete canary ingress
+	if err = r.Delete(context.TODO(), canaryIngress); err != nil {
+		klog.Errorf("rollout(%s/%s) remove canary ingress(%s) failed: %s", r.conf.RolloutNs, r.conf.RolloutName, canaryIngress.Name, err.Error())
+		return err
+	}
+	klog.Infof("rollout(%s/%s) remove canary ingress(%s) success", r.conf.RolloutNs, r.conf.RolloutName, canaryIngress.Name)
+	return nil
 }
 
 func (r *nginxController) buildCanaryIngress(stableIngress *netv1.Ingress, desiredWeight int32) *netv1.Ingress {
@@ -273,12 +209,6 @@ func (r *nginxController) buildCanaryIngress(stableIngress *netv1.Ingress, desir
 	// Always set `canary` and `canary-weight` - `canary-by-header` and `canary-by-cookie`, if set,  will always take precedence
 	desiredCanaryIngress.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)] = "true"
 	desiredCanaryIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)] = fmt.Sprintf("%d", desiredWeight)
-	state := trafficRoutingState{
-		Weight:          desiredWeight,
-		UpdateTimestamp: metav1.Now(),
-	}
-	by, _ := json.Marshal(state)
-	desiredCanaryIngress.Annotations[ingressTrafficRoutingState] = string(by)
 	return desiredCanaryIngress
 }
 

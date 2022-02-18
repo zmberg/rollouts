@@ -90,6 +90,9 @@ func (h *RolloutCreateUpdateHandler) validateRolloutUpdate(oldObj, newObj *appsv
 			return field.ErrorList{field.Forbidden(field.NewPath("Spec.ObjectRef"), "Rollout 'ObjectRef' field is immutable")}
 		}
 	default:
+		// except spec.paused
+		oldObj.Spec.Strategy.Paused = false
+		newObj.Spec.Strategy.Paused = false
 		if !reflect.DeepEqual(oldObj.Spec, newObj.Spec) {
 			return field.ErrorList{field.Forbidden(field.NewPath("Status.Phase"), "Rollout is immutable because it is at Progressing/Terminating phase")}
 		}

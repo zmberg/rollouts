@@ -125,7 +125,8 @@ func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) adm
 func (h *WorkloadHandler) handlerDeployment(newObj, oldObj *apps.Deployment) error {
 	// in rollout progressing
 	if state, _ := util.GetRolloutState(newObj.Annotations); state != nil {
-		if !state.RolloutDone && newObj.Spec.Paused == false {
+		// deployment paused=false is not allowed until the rollout is completed
+		if newObj.Spec.Paused == false {
 			newObj.Spec.Paused = true
 			klog.Warningf("deployment(%s/%s) is in rollout(%s) progressing, and set paused=true", newObj.Namespace, newObj.Name, state.RolloutName)
 		}
@@ -142,7 +143,7 @@ func (h *WorkloadHandler) handlerDeployment(newObj, oldObj *apps.Deployment) err
 		klog.Warningf("deployment(%s/%s) strategy type is 'Recreate', rollout will not work on it", newObj.Namespace, newObj.Name)
 		return nil
 	}
-	// 3. deployment.spec.PodTemplate is changed
+	// 3. deployment.spec.PodTemplate not change
 	if util.EqualIgnoreHash(&oldObj.Spec.Template, &newObj.Spec.Template) {
 		return nil
 	}
@@ -160,10 +161,10 @@ func (h *WorkloadHandler) handlerDeployment(newObj, oldObj *apps.Deployment) err
 	} else if rollout == nil {
 		return nil
 	}
-	klog.Infof("deployment(%s/%s) will be in rollout progressing, and paused", newObj.Namespace, newObj.Name)
+	klog.Infof("deployment(%s/%s) will be in rollout progressing, and set paused=true", newObj.Namespace, newObj.Name)
 	// need set workload paused = true
 	newObj.Spec.Paused = true
-	state := &util.RolloutState{RolloutDone: false, RolloutName: rollout.Name}
+	state := &util.RolloutState{RolloutName: rollout.Name}
 	by, _ := json.Marshal(state)
 	newObj.Annotations[util.InRolloutProgressingAnnotation] = string(by)
 	return nil
@@ -178,7 +179,8 @@ func (h *WorkloadHandler) fetchMatchedRollout(obj client.Object) (*appsv1alpha1.
 	}
 	for i := range rolloutList.Items {
 		rollout := &rolloutList.Items[i]
-		if rollout.Spec.ObjectRef.Type == appsv1alpha1.RevisionRefType || rollout.Spec.ObjectRef.WorkloadRef == nil {
+		if !rollout.DeletionTimestamp.IsZero() || rollout.Spec.ObjectRef.Type == appsv1alpha1.RevisionRefType ||
+			rollout.Spec.ObjectRef.WorkloadRef == nil {
 			continue
 		}
 		ref := rollout.Spec.ObjectRef.WorkloadRef
@@ -197,7 +199,7 @@ func (h *WorkloadHandler) fetchMatchedRollout(obj client.Object) (*appsv1alpha1.
 func (h *WorkloadHandler) handlerCloneSet(newObj, oldObj *kruiseappsv1alpha1.CloneSet) error {
 	// in rollout progressing
 	if state, _ := util.GetRolloutState(newObj.Annotations); state != nil {
-		if !state.RolloutDone && newObj.Spec.UpdateStrategy.Paused == false {
+		if newObj.Spec.UpdateStrategy.Paused == false {
 			newObj.Spec.UpdateStrategy.Paused = true
 			klog.Warningf("cloneSet(%s/%s) is in rollout(%s) progressing, and set paused=true", newObj.Namespace, newObj.Name, state.RolloutName)
 		}
@@ -227,7 +229,7 @@ func (h *WorkloadHandler) handlerCloneSet(newObj, oldObj *kruiseappsv1alpha1.Clo
 	klog.Infof("cloneSet(%s/%s) will be in rollout progressing, and paused", newObj.Namespace, newObj.Name)
 	// need set workload paused = true
 	newObj.Spec.UpdateStrategy.Paused = true
-	state := &util.RolloutState{RolloutDone: false, RolloutName: rollout.Name}
+	state := &util.RolloutState{RolloutName: rollout.Name}
 	by, _ := json.Marshal(state)
 	newObj.Annotations[util.InRolloutProgressingAnnotation] = string(by)
 	return nil
