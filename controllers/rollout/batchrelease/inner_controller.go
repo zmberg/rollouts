@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"time"
 
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
@@ -34,15 +35,11 @@ import (
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 const (
 	// rollouts.kruise.io
 	BatchReleaseOwnerRefAnnotation = "rollouts.kruise.io/owner-ref"
-
-	CanaryDeploymentLabelKey  = "rollouts.kruise.io/canary-deployment"
-	CanaryDeploymentFinalizer = "finalizer.rollouts.kruise.io/batch-release"
 )
 
 type innerBatchController struct {
@@ -144,39 +141,48 @@ func (r *innerBatchController) ResumeStableWorkload(checkReady bool) (bool, erro
 		return true, nil
 	}
 
+	// deployment
 	dName := r.rollout.Spec.ObjectRef.WorkloadRef.Name
 	obj := &apps.Deployment{}
-	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
-		if err := r.Get(context.TODO(), types.NamespacedName{Namespace: r.rollout.Namespace, Name: dName}, obj); err != nil {
-			return err
-		}
-		if obj.Spec.Paused == false {
-			return nil
-		}
-		obj.Spec.Paused = false
-		return r.Update(context.TODO(), obj)
-	})
+	err := r.Get(context.TODO(), types.NamespacedName{Namespace: r.rollout.Namespace, Name: dName}, obj)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			klog.Warningf("rollout(%s/%s) stable deployment(%s) not found, and return true", r.rollout.Namespace, r.rollout.Name, dName)
 			return true, nil
 		}
-		klog.Errorf("update rollout(%s/%s) stable deployment failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
 		return false, err
 	}
-	if !checkReady {
-		klog.Infof("resume rollout(%s/%s) stable deployment(paused=false) success", r.rollout.Namespace, r.rollout.Name, obj.Status.AvailableReplicas)
-		return true, nil
-	}
-
-	// wait for all pods are ready
-	maxUnavailable, _ := intstr.GetValueFromIntOrPercent(obj.Spec.Strategy.RollingUpdate.MaxUnavailable, int(*obj.Spec.Replicas), true)
-	if obj.Status.ObservedGeneration != obj.Generation || obj.Status.UpdatedReplicas != *obj.Spec.Replicas &&
-		*obj.Spec.Replicas-obj.Status.AvailableReplicas > int32(maxUnavailable) {
-		klog.Infof("rollout(%s/%s) stable deployment AvailableReplicas(%d), and wait a moment", r.rollout.Namespace, r.rollout.Name, obj.Status.AvailableReplicas)
+	// set deployment paused=false
+	if obj.Spec.Paused == true {
+		err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+			if err = r.Get(context.TODO(), types.NamespacedName{Namespace: r.rollout.Namespace, Name: dName}, obj); err != nil {
+				return err
+			}
+			obj.Spec.Paused = false
+			return r.Update(context.TODO(), obj)
+		});if err != nil {
+			klog.Errorf("update rollout(%s/%s) stable deployment failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
+			return false, err
+		}
+		klog.Infof("resume rollout(%s/%s) stable deployment(paused=false) success", r.rollout.Namespace, r.rollout.Name)
 		return false, nil
 	}
-	klog.Infof("resume rollout(%s/%s) stable deployment(paused=false) AvailableReplicas(%d) success", r.rollout.Namespace, r.rollout.Name, obj.Status.AvailableReplicas)
+
+	// Whether to wait for pods are ready
+	if !checkReady {
+		return true, nil
+	}
+	by,_ := json.Marshal(obj.Status)
+	// wait for all pods are ready
+	maxUnavailable, _ := intstr.GetValueFromIntOrPercent(obj.Spec.Strategy.RollingUpdate.MaxUnavailable, int(*obj.Spec.Replicas), true)
+	if obj.Status.ObservedGeneration != obj.Generation || obj.Status.UpdatedReplicas != *obj.Spec.Replicas ||
+		obj.Status.Replicas != *obj.Spec.Replicas || *obj.Spec.Replicas-obj.Status.AvailableReplicas > int32(maxUnavailable) {
+		klog.Infof("rollout(%s/%s) stable deployment status(%s), and wait a moment", r.rollout.Namespace, r.rollout.Name, string(by))
+		return false, nil
+	}
+	klog.Infof("resume rollout(%s/%s) stable deployment(paused=false) status(%s) success", r.rollout.Namespace, r.rollout.Name, string(by))
+	// wait a moment
+	time.Sleep(time.Second * 3)
 	return true, nil
 }
 
@@ -203,44 +209,6 @@ func (r *innerBatchController) Finalize() (bool, error) {
 	}
 	klog.Infof("rollout(%s/%s) delete batch(%s), and wait a moment", r.rollout.Namespace, r.rollout.Name, r.batchName)
 	return false, nil
-}
-
-func (r *innerBatchController) deleteCanaryDeployment(batch *appsv1alpha1.BatchRelease) error {
-	dList := &apps.DeploymentList{}
-	if err := r.List(context.TODO(), dList, client.InNamespace(batch.Namespace),
-		client.MatchingLabels(map[string]string{CanaryDeploymentLabelKey: string(batch.UID)})); err != nil {
-		return err
-	} else if len(dList.Items) == 0 {
-		return nil
-	}
-
-	// delete all the canary deployments
-	for i := range dList.Items {
-		obj := &dList.Items[i]
-		// clean up finalizers first
-		if controllerutil.ContainsFinalizer(obj, CanaryDeploymentFinalizer) {
-			newObj := obj.DeepCopy()
-			err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-				if err := r.Get(context.TODO(), types.NamespacedName{Name: obj.Name, Namespace: obj.Namespace}, newObj); err != nil {
-					return err
-				}
-				controllerutil.RemoveFinalizer(newObj, CanaryDeploymentFinalizer)
-				return r.Update(context.TODO(), newObj)
-			})
-			if err != nil {
-				klog.Errorf("remove rollout(%s/%s) canary deployment finalizer failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
-				return err
-			}
-			klog.Infof("remove rollout(%s/%s) canary deployment(%s) finalizer success", r.rollout.Namespace, r.rollout.Name, obj.Name)
-		}
-
-		// delete deployment
-		if err := r.Delete(context.TODO(), obj); err != nil {
-			return err
-		}
-		klog.Infof("delete rollout(%s/%s) canary deployment(%s) success", r.rollout.Namespace, r.rollout.Name, obj.Name)
-	}
-	return nil
 }
 
 func createBatchRelease(rollout *appsv1alpha1.Rollout, batchName string) *appsv1alpha1.BatchRelease {

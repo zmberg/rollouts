@@ -16,7 +16,20 @@ spec:
     singular: rollout
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - description: The rollout status phase
+      jsonPath: .status.phase
+      name: STATUS
+      type: string
+    - description: The rollout canary status step
+      jsonPath: .status.canaryStatus.currentStepIndex
+      name: CANARY_STEP
+      type: integer
+    - description: The rollout canary status step state
+      jsonPath: .status.canaryStatus.currentStepState
+      name: CANARY_STATE
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: Rollout is the Schema for the rollouts API

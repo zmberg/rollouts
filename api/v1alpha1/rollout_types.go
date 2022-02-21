@@ -202,10 +202,10 @@ const (
 	ProgressingReasonPaused       = "Paused"
 
 	// Terminating condition
-	RolloutConditionTerminating    RolloutConditionType = "Terminating"
+	RolloutConditionTerminating RolloutConditionType = "Terminating"
 	// Terminating Reason
-	TerminatingReasonInTerminating                      = "InTerminating"
-	TerminatingReasonCompleted                          = "Completed"
+	TerminatingReasonInTerminating = "InTerminating"
+	TerminatingReasonCompleted     = "Completed"
 )
 
 // CanaryStatus status fields that only pertain to the canary rollout
@@ -218,7 +218,7 @@ type CanaryStatus struct {
 	// +optional
 	CanaryRevision string `json:"canaryRevision"`
 	// CanaryReplicas the numbers of canary revision pods
-	CanaryReplicas      int32 `json:"canaryReplicas"`
+	CanaryReplicas int32 `json:"canaryReplicas"`
 	// CanaryReadyReplicas the numbers of ready canary revision pods
 	CanaryReadyReplicas int32 `json:"canaryReadyReplicas"`
 	// CurrentStepIndex defines the current step of the rollout is on. If the current step index is null, the
@@ -268,6 +268,9 @@ const (
 // +genclient
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="STATUS",type="string",JSONPath=".status.phase",description="The rollout status phase"
+// +kubebuilder:printcolumn:name="CANARY_STEP",type="integer",JSONPath=".status.canaryStatus.currentStepIndex",description="The rollout canary status step"
+// +kubebuilder:printcolumn:name="CANARY_STATE",type="string",JSONPath=".status.canaryStatus.currentStepState",description="The rollout canary status step state"
 
 // Rollout is the Schema for the rollouts API
 type Rollout struct {

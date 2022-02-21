@@ -116,14 +116,19 @@ func (r *nginxController) VerifyTrafficRouting(desiredWeight int32) (bool, error
 		klog.Errorf("rollout(%s/%s) get canary ingress failed: %s", r.conf.RolloutNs, r.conf.RolloutName, err.Error())
 		return false, err
 	}
-	// when desiredWeight == -1, verify whether canary ingress has been deleted
+	// when desiredWeight == -1, verify set canary ingress weight=0%
 	if desiredWeight == -1 {
-		if errors.IsNotFound(err) {
+		if errors.IsNotFound(err) || !canaryIngress.DeletionTimestamp.IsZero() {
 			klog.Infof("rollout(%s/%s) verify canary ingress has been deleted", r.conf.RolloutNs, r.conf.RolloutName)
 			return true, nil
 		}
-		klog.Infof("rollout(%s/%s) verify whether canary ingress has been deleted, but it exist", r.conf.RolloutNs, r.conf.RolloutName)
-		return false, nil
+		cWeight := canaryIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]
+		if cWeight != fmt.Sprintf("%d", 0) {
+			klog.Infof("rollout(%s/%s) verify canary ingress weight(0) invalid, and reset", r.conf.RolloutNs, r.conf.RolloutName)
+			return false, nil
+		}
+		klog.Infof("rollout(%s/%s) verify canary ingress weight(0)", r.conf.RolloutNs, r.conf.RolloutName)
+		return true, nil
 	}
 
 	// verify set canary ingress desiredWeight
@@ -147,6 +152,7 @@ func (r *nginxController) DoFinalising() error {
 		klog.Errorf("rollout(%s/%s) get canary ingress(%s) failed: %s", r.conf.RolloutNs, r.conf.RolloutName, r.defaultCanaryIngressName(), err.Error())
 		return err
 	}
+
 	if errors.IsNotFound(err) || !canaryIngress.DeletionTimestamp.IsZero() {
 		return nil
 	}

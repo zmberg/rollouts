@@ -170,15 +170,19 @@ func (r *rolloutContext) doFinalisingTrafficRouting() (bool, error) {
 		return false, err
 	} else if !verify {
 		r.newStatus.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
-		return false, trController.DoFinalising()
+		return false, trController.SetRoutes(0)
 	}
 
-	// After do TrafficRouting configuration, give the ingress provider 3 seconds to take effect
+	// After do TrafficRouting configuration, give the ingress provider 5 seconds to take effect
 	if r.newStatus.CanaryStatus.LastUpdateTime != nil {
-		if verifyTime := r.newStatus.CanaryStatus.LastUpdateTime.Add(time.Second * 3); verifyTime.After(time.Now()) {
+		if verifyTime := r.newStatus.CanaryStatus.LastUpdateTime.Add(time.Second * 5); verifyTime.After(time.Now()) {
 			klog.Infof("rollout(%s/%s) doFinalisingTrafficRouting done, and wait a moment", r.rollout.Namespace, r.rollout.Name)
 			return false, nil
 		}
+	}
+	// DoFinalising, such as delete nginx canary ingress
+	if err = trController.DoFinalising(); err!=nil {
+		return false, err
 	}
 
 	// 2. remove canary service
