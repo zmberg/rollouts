@@ -191,7 +191,7 @@ func (c *CloneSetRolloutController) FinalizeOneBatch() (bool, error) {
 }
 
 // Finalize makes sure the CloneSet is all upgraded
-func (c *CloneSetRolloutController) Finalize(pause, cleanup bool) bool {
+func (c *CloneSetRolloutController) Finalize(pause *bool, cleanup bool) bool {
 	if err := c.fetchCloneSet(); client.IgnoreNotFound(err) != nil {
 		return false
 	}
@@ -209,8 +209,8 @@ func (c *CloneSetRolloutController) Finalize(pause, cleanup bool) bool {
 func (c *CloneSetRolloutController) WatchWorkload() (WorkloadChangeEventType, *WorkloadAccessor, error) {
 	if c.parentController.Spec.Cancelled ||
 		c.parentController.DeletionTimestamp != nil ||
+		c.releaseStatus.Phase == v1alpha1.RolloutPhaseAbort ||
 		c.releaseStatus.Phase == v1alpha1.RolloutPhaseFinalizing ||
-		c.releaseStatus.Phase == v1alpha1.RolloutPhaseRollback ||
 		c.releaseStatus.Phase == v1alpha1.RolloutPhaseTerminating {
 		return IgnoreWorkloadEvent, nil, nil
 	}

@@ -165,63 +165,50 @@ func (c *deploymentController) createCanaryDeployment(stableDeploy *apps.Deploym
 	return fetchedCanary, err
 }
 
-func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, pause, cleanup bool) (bool, error) {
+func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, pause *bool, cleanup bool) (bool, error) {
 	var patchErr, deleteErr error
 
-	switch {
-	/*
-		case util.IsControlledByRollout(c.parentController):
-			if stableDeploy != nil && len(stableDeploy.Annotations[util.BatchReleaseControlAnnotation]) > 0 {
-				patchByte := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}}}`, util.BatchReleaseControlAnnotation))
-				patchErr = c.client.Patch(context.TODO(), stableDeploy, client.RawPatch(types.StrategicMergePatchType, patchByte))
-				if patchErr != nil {
-					klog.Error("Error occurred when patching Deployment(%v), error: %v", c.stableNamespacedName, patchErr)
-					return false, patchErr
-				}
-			}
-	*/
+	if stableDeploy != nil && (len(stableDeploy.Annotations[util.BatchReleaseControlAnnotation]) > 0 || (pause != nil && stableDeploy.Spec.Paused != *pause)) {
+		var patchByte []byte
+		patchByte = []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}}}`, util.BatchReleaseControlAnnotation))
+		//	patchByte = []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}},"spec":{"paused":%v}}`, util.BatchReleaseControlAnnotation, pause))
 
-	default:
-		if stableDeploy != nil && (len(stableDeploy.Annotations[util.BatchReleaseControlAnnotation]) > 0 || stableDeploy.Spec.Paused != pause) {
-			patchByte := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}},"spec":{"paused":%v}}`, util.BatchReleaseControlAnnotation, pause))
-			patchErr = c.client.Patch(context.TODO(), stableDeploy, client.RawPatch(types.StrategicMergePatchType, patchByte))
-			if patchErr != nil {
-				klog.Errorf("Error occurred when patching Deployment(%v), error: %v", c.stableNamespacedName, patchErr)
-				return false, patchErr
-			}
+		patchErr = c.client.Patch(context.TODO(), stableDeploy, client.RawPatch(types.StrategicMergePatchType, patchByte))
+		if patchErr != nil {
+			klog.Errorf("Error occurred when patching Deployment(%v), error: %v", c.stableNamespacedName, patchErr)
+			return false, patchErr
+		}
+	}
+
+	if cleanup {
+		ds, err := c.listCanaryDeployment(client.InNamespace(c.stableNamespacedName.Namespace))
+		if err != nil {
+			return false, err
 		}
 
-		// TODO: canary-deployment cannot be deleted when e2e testing
-		if cleanup {
-			ds, err := c.listCanaryDeployment(client.InNamespace(c.stableNamespacedName.Namespace))
-			if err != nil {
-				return false, err
+		// must make sure the older is deleted firstly
+		sort.Slice(ds, func(i, j int) bool {
+			return ds[i].CreationTimestamp.Before(&ds[j].CreationTimestamp)
+		})
+
+		// delete all the canary deployments
+		for _, d := range ds {
+			// clean up finalizers first
+			if controllerutil.ContainsFinalizer(d, util.CanaryDeploymentFinalizer) {
+				finalizers := sets.NewString(d.Finalizers...).Delete(util.CanaryDeploymentFinalizer).List()
+				patchErr = util.PatchFinalizer(c.client, d, finalizers)
+				if patchErr != nil && !errors.IsNotFound(patchErr) {
+					klog.Error("Error occurred when patching Deployment(%v), error: %v", client.ObjectKeyFromObject(d), patchErr)
+					return false, patchErr
+				}
+				return false, nil
 			}
 
-			// must make sure the older is deleted firstly
-			sort.Slice(ds, func(i, j int) bool {
-				return ds[i].CreationTimestamp.Before(&ds[j].CreationTimestamp)
-			})
-
-			// delete all the canary deployments
-			for _, d := range ds {
-				// clean up finalizers first
-				if controllerutil.ContainsFinalizer(d, util.CanaryDeploymentFinalizer) {
-					finalizers := sets.NewString(d.Finalizers...).Delete(util.CanaryDeploymentFinalizer).List()
-					patchErr = util.PatchFinalizer(c.client, d, finalizers)
-					if patchErr != nil && !errors.IsNotFound(patchErr) {
-						klog.Error("Error occurred when patching Deployment(%v), error: %v", client.ObjectKeyFromObject(d), patchErr)
-						return false, patchErr
-					}
-					return false, nil
-				}
-
-				// delete the deployment
-				deleteErr = c.client.Delete(context.TODO(), d)
-				if deleteErr != nil && !errors.IsNotFound(deleteErr) {
-					klog.Errorf("Error occurred when deleting Deployment(%v), error: %v", client.ObjectKeyFromObject(d), deleteErr)
-					return false, deleteErr
-				}
+			// delete the deployment
+			deleteErr = c.client.Delete(context.TODO(), d)
+			if deleteErr != nil && !errors.IsNotFound(deleteErr) {
+				klog.Errorf("Error occurred when deleting Deployment(%v), error: %v", client.ObjectKeyFromObject(d), deleteErr)
+				return false, deleteErr
 			}
 		}
 	}

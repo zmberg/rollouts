@@ -248,7 +248,8 @@ func (r *rolloutContext) removeRolloutStateInWorkload() error {
 		delete(annotations, util.InRolloutProgressingAnnotation)
 		obj.SetAnnotations(annotations)
 		return r.Update(context.TODO(), obj)
-	});if err != nil {
+	})
+	if err != nil {
 		klog.Errorf("update rollout(%s/%s) workload(%s) failed: %s", r.rollout.Namespace, r.rollout.Name, r.workload.Name, err.Error())
 		return err
 	}

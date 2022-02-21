@@ -704,7 +704,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 			for i := 0; i < 30; i++ {
 				fetchedRelease := &rolloutsv1alpha1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, fetchedRelease)).NotTo(HaveOccurred())
-				Expect(fetchedRelease.Status.CanaryStatus.CurrentBatch).Should(Equal(int32(1)))
+				Expect(fetchedRelease.Status.CanaryStatus.CurrentBatch).Should(Equal(int32(0)))
 				time.Sleep(time.Second)
 			}
 
@@ -1263,7 +1263,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 			for i := 0; i < 30; i++ {
 				fetchedRelease := &rolloutsv1alpha1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, fetchedRelease)).NotTo(HaveOccurred())
-				Expect(fetchedRelease.Status.CanaryStatus.CurrentBatch).Should(Equal(int32(1)))
+				Expect(fetchedRelease.Status.CanaryStatus.CurrentBatch).Should(Equal(int32(0)))
 				time.Sleep(time.Second)
 			}
 
@@ -1320,7 +1320,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 			for i := 0; i < 30; i++ {
 				fetchedRelease := &rolloutsv1alpha1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, fetchedRelease)).NotTo(HaveOccurred())
-				Expect(fetchedRelease.Status.CanaryStatus.CurrentBatch).Should(Equal(int32(1)))
+				Expect(fetchedRelease.Status.CanaryStatus.CurrentBatch).Should(Equal(int32(0)))
 				time.Sleep(time.Second)
 			}
 

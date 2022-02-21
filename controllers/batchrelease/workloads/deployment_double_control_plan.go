@@ -203,7 +203,7 @@ func (c *DeploymentsRolloutController) FinalizeOneBatch() (bool, error) {
 }
 
 // Finalize makes sure the Deployment is all upgraded
-func (c *DeploymentsRolloutController) Finalize(pause, cleanup bool) bool {
+func (c *DeploymentsRolloutController) Finalize(pause *bool, cleanup bool) bool {
 	if err := c.fetchStableDeployment(); client.IgnoreNotFound(err) != nil {
 		return false
 	}
@@ -224,7 +224,7 @@ func (c *DeploymentsRolloutController) WatchWorkload() (WorkloadChangeEventType,
 	if c.parentController.Spec.Cancelled ||
 		c.parentController.DeletionTimestamp != nil ||
 		c.releaseStatus.Phase == v1alpha1.RolloutPhaseFinalizing ||
-		c.releaseStatus.Phase == v1alpha1.RolloutPhaseRollback ||
+		c.releaseStatus.Phase == v1alpha1.RolloutPhaseAbort ||
 		c.releaseStatus.Phase == v1alpha1.RolloutPhaseTerminating {
 		return IgnoreWorkloadEvent, nil, nil
 	}

@@ -754,7 +754,7 @@ func TestReconcile_Deployment(t *testing.T) {
 					stable, canary,
 				}
 			},
-			ExpectedPhase: v1alpha1.RolloutPhaseRollback,
+			ExpectedPhase: v1alpha1.RolloutPhaseAbort,
 			ExpectedState: v1alpha1.ReadyBatchState,
 		},
 		{
