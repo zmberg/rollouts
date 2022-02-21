@@ -104,7 +104,7 @@ func (c *cloneSetController) claimCloneSet(clone *kruiseappsv1alpha1.CloneSet) (
 }
 
 // remove the parent controller from the deployment's owner list
-func (c *cloneSetController) releaseCloneSet(clone *kruiseappsv1alpha1.CloneSet, pause, cleanup bool) (bool, error) {
+func (c *cloneSetController) releaseCloneSet(clone *kruiseappsv1alpha1.CloneSet, pause *bool, cleanup bool) (bool, error) {
 	if clone == nil {
 		return true, nil
 	}
@@ -129,6 +129,7 @@ func (c *cloneSetController) releaseCloneSet(clone *kruiseappsv1alpha1.CloneSet,
 
 	switch {
 
+	// only clear the
 	case util.IsControlledByRollout(c.parentController):
 		if len(clone.Annotations[util.BatchReleaseControlAnnotation]) > 0 {
 			patchByte := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}}}`, util.BatchReleaseControlAnnotation))

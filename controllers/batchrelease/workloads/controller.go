@@ -62,7 +62,7 @@ type WorkloadController interface {
 	// It might depend on if the rollout succeeded or not.
 	// For example, we may remove the source object to prevent scalar traits to ever work
 	// and the finalize rollout web hooks will be called after this call succeeds
-	Finalize(pause bool, cleanup bool) bool
+	Finalize(pause *bool, cleanup bool) bool
 
 	// WatchWorkload will observe and compare the status recorded in release.status and the real-time
 	// workload status. If workload status is inconsistent with that recorded in release.status,

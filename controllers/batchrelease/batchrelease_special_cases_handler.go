@@ -31,10 +31,10 @@ import (
 
 const (
 	Keep        = "Keep"
+	Abort       = "Abort"
 	Start       = "Start"
 	Restart     = "Restart"
 	Finalize    = "Finalize"
-	RollingBack = "RollingBack"
 	Terminating = "Terminating"
 	Recalculate = "Recalculate"
 )
@@ -51,13 +51,13 @@ func (r *Executor) handleSpecialCases(controller workloads.WorkloadController) (
 	switch {
 	case r.releasePlanTerminating():
 		reason = "PlanTerminating"
-		message = "release plan is terminating, stop the release plan"
+		message = "release plan is terminating, terminate the release plan"
 		needStopThisRound = false
 		action = Terminating
 
 	case r.workloadHasGone(err):
 		reason = "WorkloadGone"
-		message = "target workload has gone, stop the release plan"
+		message = "target workload has gone, cancel the release plan"
 		needStopThisRound = false
 		action = Terminating
 
@@ -98,12 +98,13 @@ func (r *Executor) handleSpecialCases(controller workloads.WorkloadController) (
 
 	case workloadEvent == workloads.WorkloadRollback:
 		reason = "StableOrRollback"
-		message = "workload is table or rolling back, stop the release plan"
+		message = "workload is table or rolling back, abort the release plan"
 		needStopThisRound = false
-		action = RollingBack
+		action = Abort
 
 	case workloadEvent == workloads.WorkloadPodTemplateChanged:
-		reason = "RevisionChanged"
+		reason = "TargetRevisionChanged"
+		// Rollout controller needs route traffic firstly
 		if !util.IsControlledByRollout(r.release) {
 			message = "workload revision was changed, try to restart the release plan"
 			needStopThisRound = true
@@ -170,8 +171,8 @@ func (r *Executor) handleSpecialCases(controller workloads.WorkloadController) (
 		// keep current status, do nothing
 	case Start:
 		signalStart(r.releaseStatus)
-	case RollingBack:
-		signalRollingBack(r.releaseStatus)
+	case Abort:
+		signalAbort(r.releaseStatus)
 	case Terminating:
 		signalTerminating(r.releaseStatus)
 	case Finalize:

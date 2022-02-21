@@ -19,6 +19,7 @@ package batchrelease
 import (
 	"fmt"
 	workloads2 "github.com/openkruise/rollouts/controllers/batchrelease/workloads"
+	"k8s.io/utils/pointer"
 	"reflect"
 	"time"
 
@@ -147,10 +148,14 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads2.Workloa
 
 	case v1alpha1.RolloutPhaseFinalizing:
 		klog.V(3).Infof("BatchRelease(%v) State Machine into %s state", r.releaseKey, v1alpha1.RolloutPhaseFinalizing)
-		// restore the workload in this state
-		pause, clean := false, false
+		// finalize canary the resources
+		// do not clean the canary resources and open paused if it is controlled by rollout,
+		// because rollout controller should route the traffic firstly.
+		clean := false
+		pause := pointer.BoolPtr(false)
 		if util.IsControlledByRollout(r.release) {
-			pause, clean = true, false
+			pause = nil
+			clean = false
 		}
 
 		if succeed := workloadController.Finalize(pause, clean); succeed {
@@ -160,13 +165,18 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads2.Workloa
 			retryDuration = reconcile.Result{RequeueAfter: DefaultShortDuration}
 		}
 
-	case v1alpha1.RolloutPhaseRollback:
-		klog.V(3).Infof("BatchRelease(%v) State Machine into %s state", r.releaseKey, v1alpha1.RolloutPhaseRollback)
-		// restore the workload in this state
-		pause, clean := false, true
+	case v1alpha1.RolloutPhaseAbort:
+		klog.V(3).Infof("BatchRelease(%v) State Machine into %s state", r.releaseKey, v1alpha1.RolloutPhaseAbort)
+		// Abort the release plan.
+		// do not clean the canary resources if it is controlled by rollout,
+		// because rollout controller should route the traffic firstly.
+		clean := true
+		pause := pointer.BoolPtr(false)
 		if util.IsControlledByRollout(r.release) {
-			pause, clean = true, false
+			pause = nil
+			clean = false
 		}
+
 		if succeed := workloadController.Finalize(pause, clean); succeed {
 			cleanupConditions(status)
 			status.Phase = v1alpha1.RolloutPhaseCancelled
@@ -176,11 +186,7 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads2.Workloa
 
 	case v1alpha1.RolloutPhaseTerminating:
 		klog.V(3).Infof("BatchRelease(%v) State Machine into %s state", r.releaseKey, v1alpha1.RolloutPhaseTerminating)
-		pause, clean := false, true
-		if util.IsControlledByRollout(r.release) {
-			pause, clean = true, true
-		}
-		if succeed := workloadController.Finalize(pause, clean); succeed {
+		if succeed := workloadController.Finalize(nil, true); succeed {
 			if r.release.DeletionTimestamp != nil {
 				setCondition(status, v1alpha1.TerminatingReasonInTerminating, "Release plan was cancelled or deleted", v1.ConditionTrue)
 			} else {
