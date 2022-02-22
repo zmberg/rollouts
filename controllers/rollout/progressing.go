@@ -60,6 +60,11 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *appsv1alpha1.Ro
 	case appsv1alpha1.ProgressingReasonInRolling:
 		// rollout canceled, indicates rollback(v1 -> v2 -> v1)
 		if rollout.Status.StableRevision == rollout.Status.CanaryRevision {
+			workload, _ := r.Finder.GetWorkloadForRef(rollout.Namespace, rollout.Spec.ObjectRef.WorkloadRef)
+			if workload != nil {
+				// rollback, mark stable revision
+				newStatus.CanaryStatus.CanaryRevision = workload.CurrentPodTemplateHash
+			}
 			klog.Infof("rollout(%s/%s) workload has been rollback, then rollout canceled", rollout.Namespace, rollout.Name)
 			progressingStateTransition(newStatus, corev1.ConditionFalse, appsv1alpha1.ProgressingReasonCancelling, "workload has been rollback, then rollout canceled")
 			// In case of continuous publishing(v1 -> v2 -> v3), then restart publishing

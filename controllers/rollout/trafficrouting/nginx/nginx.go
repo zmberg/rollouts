@@ -68,6 +68,9 @@ func (r *nginxController) SetRoutes(desiredWeight int32) error {
 	err := r.Get(context.TODO(), types.NamespacedName{Namespace: r.conf.RolloutNs, Name: r.conf.TrafficConf.Ingress}, stableIngress)
 	if err != nil {
 		return err
+	} else if !stableIngress.DeletionTimestamp.IsZero() {
+		klog.Warningf("rollout(%s/%s) stable ingress is deleting", r.conf.RolloutNs, r.conf.RolloutName)
+		return nil
 	}
 	canaryIngress := &netv1.Ingress{}
 	err = r.Get(context.TODO(), types.NamespacedName{Namespace: r.conf.RolloutNs, Name: r.defaultCanaryIngressName()}, canaryIngress)
@@ -83,6 +86,9 @@ func (r *nginxController) SetRoutes(desiredWeight int32) error {
 		}
 		by, _ := json.Marshal(canaryIngress)
 		klog.Infof("rollout(%s/%s) create canary ingress(%s) success", r.conf.RolloutNs, r.conf.RolloutName, string(by))
+		return nil
+	} else if !canaryIngress.DeletionTimestamp.IsZero() {
+		klog.Warningf("rollout(%s/%s) canary ingress is deleting", r.conf.RolloutNs, r.conf.RolloutName)
 		return nil
 	}
 
@@ -124,7 +130,7 @@ func (r *nginxController) VerifyTrafficRouting(desiredWeight int32) (bool, error
 		}
 		cWeight := canaryIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]
 		if cWeight != fmt.Sprintf("%d", 0) {
-			klog.Infof("rollout(%s/%s) verify canary ingress weight(0) invalid, and reset", r.conf.RolloutNs, r.conf.RolloutName)
+			klog.Infof("rollout(%s/%s) verify canary ingress weight(-1) invalid, and reset", r.conf.RolloutNs, r.conf.RolloutName)
 			return false, nil
 		}
 		klog.Infof("rollout(%s/%s) verify canary ingress weight(0)", r.conf.RolloutNs, r.conf.RolloutName)

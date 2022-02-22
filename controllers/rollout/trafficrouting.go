@@ -170,7 +170,12 @@ func (r *rolloutContext) doFinalisingTrafficRouting() (bool, error) {
 		return false, err
 	} else if !verify {
 		r.newStatus.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
-		return false, trController.SetRoutes(0)
+		err = trController.SetRoutes(0)
+		if err != nil && errors.IsNotFound(err) {
+			klog.Warningf("rollout(%s/%s) VerifyTrafficRouting(-1), and stable ingress not found", r.rollout.Namespace, r.rollout.Name)
+			return false, nil
+		}
+		return false, err
 	}
 
 	// After do TrafficRouting configuration, give the ingress provider 5 seconds to take effect
@@ -181,7 +186,7 @@ func (r *rolloutContext) doFinalisingTrafficRouting() (bool, error) {
 		}
 	}
 	// DoFinalising, such as delete nginx canary ingress
-	if err = trController.DoFinalising(); err!=nil {
+	if err = trController.DoFinalising(); err != nil {
 		return false, err
 	}
 
