@@ -77,20 +77,18 @@ func (r *Executor) SetReleaseInfo(release *v1alpha1.BatchRelease) {
 
 // Do execute the release plan
 func (r *Executor) Do() (reconcile.Result, *v1alpha1.BatchReleaseStatus) {
-	klog.V(3).InfoS("Reconcile the BatchRelease",
-		"target-workload", r.release.Spec.TargetRef.WorkloadRef.Name)
-
-	klog.V(3).InfoS("release-status:",
-		"release-phase", r.releaseStatus.Phase,
-		"batch-rolling-state", r.releaseStatus.CanaryStatus.CurrentBatchState,
-		"current-batch", r.releaseStatus.CanaryStatus.CurrentBatch)
+	klog.InfoS("Starting one round of reconciling release plan",
+		"BatchRelease", client.ObjectKeyFromObject(r.release),
+		"phase", r.releaseStatus.Phase,
+		"current-batch", r.releaseStatus.CanaryStatus.CurrentBatch,
+		"current-batch-state", r.releaseStatus.CanaryStatus.CurrentBatchState)
 
 	workloadController, err := r.GetWorkloadController()
 	if err != nil || workloadController == nil {
 		return reconcile.Result{}, r.releaseStatus
 	}
 
-	shouldStopThisRound, retryDuration := r.handleSpecialCases(workloadController)
+	shouldStopThisRound, retryDuration := r.checkHealthyBeforeExecution(workloadController)
 	if shouldStopThisRound {
 		return retryDuration, r.releaseStatus
 	}
@@ -113,9 +111,9 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads2.Workloa
 		needed, err := workloadController.IfNeedToProgress()
 		switch {
 		case err != nil:
-			setCondition(r.releaseStatus, "VerifyWorkloadError", err.Error(), v1.ConditionFalse)
+			setCondition(status, "VerifyWorkloadError", err.Error(), v1.ConditionFalse)
 		case needed:
-			setCondition(r.releaseStatus, "VerifyWorkloadSuccessfully", "", v1.ConditionTrue)
+			setCondition(status, "VerifyWorkloadSuccessfully", "", v1.ConditionTrue)
 			status.Phase = v1alpha1.RolloutPhasePreparing
 			fallthrough
 		default:
@@ -125,12 +123,12 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads2.Workloa
 	case v1alpha1.RolloutPhasePreparing:
 		klog.V(3).Infof("BatchRelease(%v) State Machine into %s state", r.releaseKey, v1alpha1.RolloutPhasePreparing)
 		// prepare and initialize something before progressing in this state.
-		initialized, err := workloadController.Prepare()
+		initialized, err := workloadController.PrepareBeforeProgress()
 		switch {
 		case err != nil:
-			setCondition(r.releaseStatus, "InitializeError", err.Error(), v1.ConditionFalse)
+			setCondition(status, "InitializeError", err.Error(), v1.ConditionFalse)
 		case initialized:
-			setCondition(r.releaseStatus, "InitializeSuccessfully", "", v1.ConditionTrue)
+			setCondition(status, "InitializeSuccessfully", "", v1.ConditionTrue)
 			status.Phase = v1alpha1.RolloutPhaseProgressing
 			fallthrough
 		default:
@@ -142,14 +140,14 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads2.Workloa
 		// progress the release plan in this state.
 		var progressDone bool
 		if progressDone, retryDuration = r.progressBatches(workloadController); progressDone {
-			setCondition(r.releaseStatus, "ProgressSuccessfully", "", v1.ConditionTrue)
+			setCondition(status, "ProgressSuccessfully", "", v1.ConditionTrue)
 			status.Phase = v1alpha1.RolloutPhaseFinalizing
 		}
 
 	case v1alpha1.RolloutPhaseFinalizing:
 		klog.V(3).Infof("BatchRelease(%v) State Machine into %s state", r.releaseKey, v1alpha1.RolloutPhaseFinalizing)
-		// finalize canary the resources
-		// do not clean the canary resources and open paused if it is controlled by rollout,
+		// finalize canary the resources when progressing done.
+		// Do not clean the canary resources and set 'paused=false' if it is controlled by rollout,
 		// because rollout controller should route the traffic firstly.
 		clean := false
 		pause := pointer.BoolPtr(false)
@@ -158,7 +156,7 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads2.Workloa
 			clean = false
 		}
 
-		if succeed := workloadController.Finalize(pause, clean); succeed {
+		if succeed := workloadController.FinalizeProgress(pause, clean); succeed {
 			cleanupConditions(status)
 			status.Phase = v1alpha1.RolloutPhaseCompleted
 		} else {
@@ -177,7 +175,7 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads2.Workloa
 			clean = false
 		}
 
-		if succeed := workloadController.Finalize(pause, clean); succeed {
+		if succeed := workloadController.FinalizeProgress(pause, clean); succeed {
 			cleanupConditions(status)
 			status.Phase = v1alpha1.RolloutPhaseCancelled
 		} else {
@@ -186,7 +184,7 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads2.Workloa
 
 	case v1alpha1.RolloutPhaseTerminating:
 		klog.V(3).Infof("BatchRelease(%v) State Machine into %s state", r.releaseKey, v1alpha1.RolloutPhaseTerminating)
-		if succeed := workloadController.Finalize(nil, true); succeed {
+		if succeed := workloadController.FinalizeProgress(nil, true); succeed {
 			if r.release.DeletionTimestamp != nil {
 				setCondition(status, v1alpha1.TerminatingReasonInTerminating, "Release plan was cancelled or deleted", v1.ConditionTrue)
 			} else {
@@ -227,7 +225,7 @@ func (r *Executor) progressBatches(workloadController workloads2.WorkloadControl
 	case v1alpha1.DoCanaryBatchState:
 		klog.V(3).Infof("BatchRelease(%v) Batch State Machine into %s state", r.releaseKey, v1alpha1.DoCanaryBatchState)
 		// modify workload replicas/partition based on release plan in this state.
-		upgradeDone, err := workloadController.RolloutOneBatchPods()
+		upgradeDone, err := workloadController.ProgressOneBatchReplicas()
 		switch {
 		case err != nil:
 			setCondition(r.releaseStatus, "DoCanaryError", err.Error(), v1.ConditionFalse)
@@ -242,7 +240,7 @@ func (r *Executor) progressBatches(workloadController workloads2.WorkloadControl
 		klog.V(3).Infof("BatchRelease(%v) Batch State Machine into %s state", r.releaseKey, v1alpha1.VerifyBatchState)
 		// TODO: metrics analysis
 		// replicas/partition has been modified, should wait pod ready in this state.
-		verified, err := workloadController.CheckOneBatchPods()
+		verified, err := workloadController.CheckOneBatchReplicas()
 		switch {
 		case err != nil:
 			setCondition(r.releaseStatus, "VerifyBatchReadyError", err.Error(), v1.ConditionFalse)

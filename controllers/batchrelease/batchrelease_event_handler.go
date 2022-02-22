@@ -59,7 +59,7 @@ func (w workloadEventHandler) Create(evt event.CreateEvent, q workqueue.RateLimi
 }
 
 func (w workloadEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
-	var oldAccessor, newAccessor *workloads.WorkloadAccessor
+	var oldAccessor, newAccessor *workloads.WorkloadInfo
 	var gvk schema.GroupVersionKind
 
 	switch evt.ObjectNew.(type) {
@@ -76,10 +76,10 @@ func (w workloadEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimi
 			newReplicas = *newClone.Spec.Replicas
 		}
 
-		oldAccessor = &workloads.WorkloadAccessor{
+		oldAccessor = &workloads.WorkloadInfo{
 			Replicas: &oldReplicas,
 			Paused:   oldClone.Spec.UpdateStrategy.Paused,
-			Status: &workloads.Status{
+			Status: &workloads.WorkloadStatus{
 				Replicas:             oldClone.Status.Replicas,
 				ReadyReplicas:        oldClone.Status.ReadyReplicas,
 				UpdatedReplicas:      oldClone.Status.UpdatedReplicas,
@@ -89,10 +89,10 @@ func (w workloadEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimi
 			Metadata: &oldClone.ObjectMeta,
 		}
 
-		newAccessor = &workloads.WorkloadAccessor{
+		newAccessor = &workloads.WorkloadInfo{
 			Replicas: &newReplicas,
 			Paused:   newClone.Spec.UpdateStrategy.Paused,
-			Status: &workloads.Status{
+			Status: &workloads.WorkloadStatus{
 				Replicas:             newClone.Status.Replicas,
 				ReadyReplicas:        newClone.Status.ReadyReplicas,
 				UpdatedReplicas:      newClone.Status.UpdatedReplicas,
@@ -115,10 +115,10 @@ func (w workloadEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimi
 			newReplicas = *newDeploy.Spec.Replicas
 		}
 
-		oldAccessor = &workloads.WorkloadAccessor{
+		oldAccessor = &workloads.WorkloadInfo{
 			Replicas: &oldReplicas,
 			Paused:   oldDeploy.Spec.Paused,
-			Status: &workloads.Status{
+			Status: &workloads.WorkloadStatus{
 				Replicas:           oldDeploy.Status.Replicas,
 				ReadyReplicas:      oldDeploy.Status.AvailableReplicas,
 				UpdatedReplicas:    oldDeploy.Status.UpdatedReplicas,
@@ -127,10 +127,10 @@ func (w workloadEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimi
 			Metadata: &oldDeploy.ObjectMeta,
 		}
 
-		newAccessor = &workloads.WorkloadAccessor{
+		newAccessor = &workloads.WorkloadInfo{
 			Replicas: &newReplicas,
 			Paused:   newDeploy.Spec.Paused,
-			Status: &workloads.Status{
+			Status: &workloads.WorkloadStatus{
 				Replicas:           newDeploy.Status.Replicas,
 				ReadyReplicas:      newDeploy.Status.AvailableReplicas,
 				UpdatedReplicas:    newDeploy.Status.UpdatedReplicas,
@@ -250,17 +250,17 @@ func (w *workloadEventHandler) getBatchRelease(workloadNamespaceName types.Names
 	return
 }
 
-func observeGenerationChanged(newOne, oldOne *workloads.WorkloadAccessor) bool {
+func observeGenerationChanged(newOne, oldOne *workloads.WorkloadInfo) bool {
 	return newOne.Metadata.Generation != oldOne.Metadata.Generation
 }
 
-func observeLatestGeneration(newOne, oldOne *workloads.WorkloadAccessor) bool {
+func observeLatestGeneration(newOne, oldOne *workloads.WorkloadInfo) bool {
 	oldNot := oldOne.Metadata.Generation != oldOne.Status.ObservedGeneration
 	newDid := newOne.Metadata.Generation == newOne.Status.ObservedGeneration
 	return oldNot && newDid
 }
 
-func observeScaleEventDone(newOne, oldOne *workloads.WorkloadAccessor) bool {
+func observeScaleEventDone(newOne, oldOne *workloads.WorkloadInfo) bool {
 	_, controlled := newOne.Metadata.Annotations[util.BatchReleaseControlAnnotation]
 	if !controlled {
 		return false
@@ -273,7 +273,7 @@ func observeScaleEventDone(newOne, oldOne *workloads.WorkloadAccessor) bool {
 	return oldScaling && newDone
 }
 
-func observeReplicasChanged(newOne, oldOne *workloads.WorkloadAccessor) bool {
+func observeReplicasChanged(newOne, oldOne *workloads.WorkloadInfo) bool {
 	_, controlled := newOne.Metadata.Annotations[util.BatchReleaseControlAnnotation]
 	if !controlled {
 		return false

@@ -166,10 +166,5 @@ func FilterActiveDeployment(ds []*apps.Deployment) []*apps.Deployment {
 
 func ShortRandomStr(collisionCount *int32) string {
 	randStr := rand.String(3)
-	if collisionCount != nil {
-		for i := int32(0); i < *collisionCount; i++ {
-			randStr = rand.String(3)
-		}
-	}
-	return randStr
+	return rand.SafeEncodeString(randStr)
 }

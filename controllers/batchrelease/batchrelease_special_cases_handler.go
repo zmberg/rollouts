@@ -39,13 +39,13 @@ const (
 	Recalculate = "Recalculate"
 )
 
-func (r *Executor) handleSpecialCases(controller workloads.WorkloadController) (needStopThisRound bool, result reconcile.Result) {
+func (r *Executor) checkHealthyBeforeExecution(controller workloads.WorkloadController) (needStopThisRound bool, result reconcile.Result) {
 	var reason string
 	var message string
 	var action string
 
 	// watch the event of workload change
-	workloadEvent, workloadInfo, err := controller.WatchWorkload()
+	workloadEvent, workloadInfo, err := controller.SyncWorkloadInfo()
 
 	// Note: must keep the order of the following cases
 	switch {
@@ -70,7 +70,7 @@ func (r *Executor) handleSpecialCases(controller workloads.WorkloadController) (
 
 	case workloadEvent == workloads.WorkloadReplicasChanged:
 		reason = "ReplicasChanged"
-		message = "workload is scaling, paused and wait for it to be done"
+		message = "workload is scaling, recalculate the canary batch"
 		needStopThisRound = true
 		action = Recalculate
 

@@ -61,6 +61,7 @@ func (c *deploymentController) claimDeployment(stableDeploy, canaryDeploy *apps.
 		}
 	}
 
+	// patch control info to stable deployments if it needs
 	if !controlled {
 		controlInfo, _ := json.Marshal(metav1.NewControllerRef(c.parentController, c.parentController.GetObjectKind().GroupVersionKind()))
 		patchedInfo := map[string]interface{}{
@@ -77,6 +78,7 @@ func (c *deploymentController) claimDeployment(stableDeploy, canaryDeploy *apps.
 		}
 	}
 
+	// create canary deployment if it needs
 	if canaryDeploy == nil || !util.EqualIgnoreHash(&stableDeploy.Spec.Template, &canaryDeploy.Spec.Template) {
 		var err error
 		var collisionCount int32
@@ -104,7 +106,7 @@ func (c *deploymentController) claimDeployment(stableDeploy, canaryDeploy *apps.
 }
 
 func (c *deploymentController) createCanaryDeployment(stableDeploy *apps.Deployment, collisionCount *int32) (*apps.Deployment, error) {
-	// TODO: reduce the len(canary-deployment.Name) to avoid too long name
+	// TODO: find a better way to generate canary deployment name
 	suffix := util.ShortRandomStr(collisionCount)
 	canaryDeploy := &apps.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -131,7 +133,7 @@ func (c *deploymentController) createCanaryDeployment(stableDeploy *apps.Deploym
 	canaryDeploy.OwnerReferences = append(canaryDeploy.OwnerReferences, *metav1.NewControllerRef(
 		c.parentController, c.parentController.GroupVersionKind()))
 
-	// set labels & annotations
+	// set extra labels & annotations
 	canaryDeploy.Labels[util.CanaryDeploymentLabelKey] = c.stableNamespacedName.Name
 	owner := metav1.NewControllerRef(c.parentController, c.parentController.GroupVersionKind())
 	if owner != nil {
@@ -168,10 +170,14 @@ func (c *deploymentController) createCanaryDeployment(stableDeploy *apps.Deploym
 func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, pause *bool, cleanup bool) (bool, error) {
 	var patchErr, deleteErr error
 
+	// clean up control info for stable deployment if it needs
 	if stableDeploy != nil && (len(stableDeploy.Annotations[util.BatchReleaseControlAnnotation]) > 0 || (pause != nil && stableDeploy.Spec.Paused != *pause)) {
 		var patchByte []byte
-		patchByte = []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}}}`, util.BatchReleaseControlAnnotation))
-		//	patchByte = []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}},"spec":{"paused":%v}}`, util.BatchReleaseControlAnnotation, pause))
+		if pause == nil {
+			patchByte = []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}}}`, util.BatchReleaseControlAnnotation))
+		} else {
+			patchByte = []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}},"spec":{"paused":%v}}`, util.BatchReleaseControlAnnotation, *pause))
+		}
 
 		patchErr = c.client.Patch(context.TODO(), stableDeploy, client.RawPatch(types.StrategicMergePatchType, patchByte))
 		if patchErr != nil {
@@ -180,6 +186,7 @@ func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, 
 		}
 	}
 
+	// clean up canary deployment if it needs
 	if cleanup {
 		ds, err := c.listCanaryDeployment(client.InNamespace(c.stableNamespacedName.Namespace))
 		if err != nil {

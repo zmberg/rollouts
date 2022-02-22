@@ -160,7 +160,8 @@ func (r *innerBatchController) ResumeStableWorkload(checkReady bool) (bool, erro
 			}
 			obj.Spec.Paused = false
 			return r.Update(context.TODO(), obj)
-		});if err != nil {
+		})
+		if err != nil {
 			klog.Errorf("update rollout(%s/%s) stable deployment failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
 			return false, err
 		}
@@ -172,7 +173,7 @@ func (r *innerBatchController) ResumeStableWorkload(checkReady bool) (bool, erro
 	if !checkReady {
 		return true, nil
 	}
-	by,_ := json.Marshal(obj.Status)
+	by, _ := json.Marshal(obj.Status)
 	// wait for all pods are ready
 	maxUnavailable, _ := intstr.GetValueFromIntOrPercent(obj.Spec.Strategy.RollingUpdate.MaxUnavailable, int(*obj.Spec.Replicas), true)
 	if obj.Status.ObservedGeneration != obj.Generation || obj.Status.UpdatedReplicas != *obj.Spec.Replicas ||

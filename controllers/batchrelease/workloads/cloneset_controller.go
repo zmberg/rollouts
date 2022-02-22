@@ -58,6 +58,7 @@ func (c *cloneSetController) claimCloneSet(clone *kruiseappsv1alpha1.CloneSet) (
 	patch := map[string]interface{}{}
 	switch {
 	case controlled:
+		// make sure paused=false
 		patch = map[string]interface{}{
 			"spec": map[string]interface{}{
 				"updateStrategy": map[string]interface{}{
@@ -111,7 +112,6 @@ func (c *cloneSetController) releaseCloneSet(clone *kruiseappsv1alpha1.CloneSet,
 
 	var found bool
 	var refByte string
-	var patchErr error
 	if refByte, found = clone.Annotations[util.BatchReleaseControlAnnotation]; found && refByte != "" {
 		ref := &metav1.OwnerReference{}
 		if err := json.Unmarshal([]byte(refByte), ref); err != nil {
@@ -127,24 +127,12 @@ func (c *cloneSetController) releaseCloneSet(clone *kruiseappsv1alpha1.CloneSet,
 		return true, nil
 	}
 
+	var patchByte string
 	switch {
-
-	// only clear the
-	case util.IsControlledByRollout(c.parentController):
-		if len(clone.Annotations[util.BatchReleaseControlAnnotation]) > 0 {
-			patchByte := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}}}`, util.BatchReleaseControlAnnotation))
-			patchErr = c.client.Patch(context.TODO(), clone, client.RawPatch(types.StrategicMergePatchType, patchByte))
-			if patchErr != nil {
-				klog.Error("Error occurred when patching CloneSet(%v), error: %v", c.targetNamespacedName, patchErr)
-				return false, patchErr
-			}
-		}
-
-	default:
+	case cleanup:
 		patchSpec := map[string]interface{}{
 			"updateStrategy": map[string]interface{}{
 				"partition": nil,
-				"paused":    pause,
 			},
 		}
 
@@ -157,13 +145,16 @@ func (c *cloneSetController) releaseCloneSet(clone *kruiseappsv1alpha1.CloneSet,
 		}
 
 		patchSpecByte, _ := json.Marshal(patchSpec)
-		patchByte := fmt.Sprintf(`{"metadata":{"annotations":{"%s":null, "%s":null}},"spec":%s}`,
+		patchByte = fmt.Sprintf(`{"metadata":{"annotations":{"%s":null, "%s":null}},"spec":%s}`,
 			util.BatchReleaseControlAnnotation, util.StashCloneSetPartition, string(patchSpecByte))
 
-		if err := c.client.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, []byte(patchByte))); err != nil {
-			c.recorder.Eventf(c.parentController, v1.EventTypeWarning, "ReleaseCloneSetFailed", err.Error())
-			return false, err
-		}
+	default:
+		patchByte = fmt.Sprintf(`{"metadata":{"annotations":{"%s":null}}}`, util.BatchReleaseControlAnnotation)
+	}
+
+	if err := c.client.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, []byte(patchByte))); err != nil {
+		c.recorder.Eventf(c.parentController, v1.EventTypeWarning, "ReleaseCloneSetFailed", err.Error())
+		return false, err
 	}
 
 	klog.V(3).Infof("Release CloneSet(%v) Successfully", client.ObjectKeyFromObject(clone))

@@ -181,7 +181,7 @@ func (r *rolloutContext) doFinalisingTrafficRouting() (bool, error) {
 		}
 	}
 	// DoFinalising, such as delete nginx canary ingress
-	if err = trController.DoFinalising(); err!=nil {
+	if err = trController.DoFinalising(); err != nil {
 		return false, err
 	}
 

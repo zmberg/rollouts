@@ -332,7 +332,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(fmt.Sprintf("%s-canary", service.Name), cService)).To(HaveOccurred())
 			// deployment
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
-			by,_ := json.Marshal(workload.Status)
+			by, _ := json.Marshal(workload.Status)
 			fmt.Println(string(by))
 			Expect(workload.Spec.Paused).Should(BeFalse())
 			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
@@ -449,7 +449,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(fmt.Sprintf("%s-canary", service.Name), cService)).To(HaveOccurred())
 			// deployment
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
-			by,_ := json.Marshal(workload.Status)
+			by, _ := json.Marshal(workload.Status)
 			fmt.Println(string(by))
 			Expect(workload.Spec.Paused).Should(BeFalse())
 			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
@@ -598,7 +598,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(fmt.Sprintf("%s-canary", service.Name), cService)).To(HaveOccurred())
 			// deployment
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
-			by,_ := json.Marshal(workload.Status)
+			by, _ := json.Marshal(workload.Status)
 			fmt.Println(string(by))
 			Expect(workload.Spec.Paused).Should(BeFalse())
 			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
@@ -731,7 +731,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(fmt.Sprintf("%s-canary", service.Name), cService)).To(HaveOccurred())
 			// deployment
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
-			by,_ := json.Marshal(workload.Status)
+			by, _ := json.Marshal(workload.Status)
 			fmt.Println(string(by))
 			Expect(workload.Spec.Paused).Should(BeFalse())
 			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
@@ -865,7 +865,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(fmt.Sprintf("%s-canary", service.Name), cService)).To(HaveOccurred())
 			// deployment
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
-			by,_ := json.Marshal(workload.Status)
+			by, _ := json.Marshal(workload.Status)
 			fmt.Println(string(by))
 			Expect(workload.Spec.Paused).Should(BeFalse())
 			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
@@ -991,7 +991,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(fmt.Sprintf("%s-canary", service.Name), cService)).To(HaveOccurred())
 			// deployment
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
-			by,_ := json.Marshal(workload.Status)
+			by, _ := json.Marshal(workload.Status)
 			fmt.Println(string(by))
 			Expect(workload.Spec.Paused).Should(BeFalse())
 			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
@@ -1086,7 +1086,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(fmt.Sprintf("%s-canary", service.Name), cService)).To(HaveOccurred())
 			// deployment
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
-			by,_ := json.Marshal(workload.Status)
+			by, _ := json.Marshal(workload.Status)
 			fmt.Println(string(by))
 			Expect(workload.Spec.Paused).Should(BeFalse())
 			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
@@ -1191,7 +1191,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(fmt.Sprintf("%s-canary", service.Name), cService)).To(HaveOccurred())
 			// deployment
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
-			by,_ := json.Marshal(workload.Status)
+			by, _ := json.Marshal(workload.Status)
 			fmt.Println(string(by))
 			Expect(workload.Spec.Paused).Should(BeFalse())
 			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))

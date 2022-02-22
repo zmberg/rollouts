@@ -125,13 +125,13 @@ type BatchReleaseReconciler struct {
 }
 
 // +kubebuilder:rbac:groups="*",resources="events",verbs=create;update;patch
-// +kubebuilder:rbac:groups=rollouts.kruise.io,resources=batchreleases,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=rollouts.kruise.io,resources=batchreleases,verbs=get;list;watch;update;patch;delete
 // +kubebuilder:rbac:groups=rollouts.kruise.io,resources=batchreleases/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=apps.kruise.io,resources=clonesets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=apps.kruise.io,resources=clonesets,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=apps.kruise.io,resources=clonesets/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=apps,resources=deployments/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=apps,resources=replicasets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=apps,resources=replicasets,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apps,resources=replicasets/status,verbs=get;update;patch
 
 // Reconcile reads that state of the cluster for a Rollout object and makes changes based on the state read
@@ -149,7 +149,7 @@ func (r *BatchReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
-	klog.V(3).Infof("Begin to reconcile BatchRelease(%v/%v), release-phase: %v", release.Namespace, release.Name, release.Status.Phase)
+	klog.Infof("Begin to reconcile BatchRelease(%v/%v), release-phase: %v", release.Namespace, release.Name, release.Status.Phase)
 
 	// finalizer will block the deletion of batchRelease
 	// util all canary resources and settings are cleaned up.
@@ -166,9 +166,11 @@ func (r *BatchReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	result, currentStatus := r.executor.Do()
 
 	defer func() {
-		klog.V(3).InfoS("Finished one round of reconciling release plan",
-			"BatchRelease", client.ObjectKeyFromObject(release), "release-phase", currentStatus.Phase,
-			"batch-state", currentStatus.CanaryStatus.CurrentBatchState, "current-batch", currentStatus.CanaryStatus.CurrentBatch,
+		klog.InfoS("Finished one round of reconciling release plan",
+			"BatchRelease", client.ObjectKeyFromObject(release),
+			"phase", currentStatus.Phase,
+			"current-batch", currentStatus.CanaryStatus.CurrentBatch,
+			"current-batch-state", currentStatus.CanaryStatus.CurrentBatchState,
 			"reconcile-result ", result, "time-cost", time.Since(startTimestamp))
 	}()
 
