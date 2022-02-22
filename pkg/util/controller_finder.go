@@ -45,6 +45,8 @@ type Workload struct {
 	CanaryReplicas int32
 	// canary ready replicas
 	CanaryReadyReplicas int32
+	// deployment.spec.pod.template hash
+	CurrentPodTemplateHash string
 
 	// indicate whether the workload can enter the rollout process
 	// 1. workload.Spec.Paused = true
@@ -155,6 +157,7 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *appsv1alpha1.Wor
 	workload.StableRevision = stableRs.Labels[RsPodRevisionLabelKey]
 	// canary revision
 	workload.CanaryRevision = ComputeHash(&stable.Spec.Template, nil)
+	workload.CurrentPodTemplateHash = workload.CanaryRevision
 	// not in rollout progressing
 	if _, ok = workload.Annotations[InRolloutProgressingAnnotation]; !ok {
 		return workload, nil
