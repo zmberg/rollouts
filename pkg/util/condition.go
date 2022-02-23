@@ -23,8 +23,8 @@ import (
 )
 
 // NewRolloutCondition creates a new rollout condition.
-func NewRolloutCondition(condType appsv1alpha1.RolloutConditionType, status corev1.ConditionStatus, reason, message string) appsv1alpha1.RolloutCondition {
-	return appsv1alpha1.RolloutCondition{
+func NewRolloutCondition(condType appsv1alpha1.RolloutConditionType, status corev1.ConditionStatus, reason, message string) *appsv1alpha1.RolloutCondition {
+	return &appsv1alpha1.RolloutCondition{
 		Type:               condType,
 		Status:             status,
 		LastUpdateTime:     metav1.Now(),

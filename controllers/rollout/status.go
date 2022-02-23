@@ -35,8 +35,8 @@ func (r *RolloutReconciler) checkRolloutStatus(rollout *appsv1alpha1.Rollout) er
 	// delete rollout CRD
 	if !rollout.DeletionTimestamp.IsZero() && newStatus.Phase != appsv1alpha1.RolloutPhaseTerminating {
 		newStatus.Phase = appsv1alpha1.RolloutPhaseTerminating
-		cond := util.NewRolloutCondition(appsv1alpha1.RolloutConditionTerminating, corev1.ConditionFalse, appsv1alpha1.TerminatingReasonInTerminating, "rollout is in terminating")
-		util.SetRolloutCondition(&newStatus, cond)
+		cond := util.NewRolloutCondition(appsv1alpha1.RolloutConditionTerminating, corev1.ConditionFalse, appsv1alpha1.TerminatingReasonInTerminating, "Rollout is in terminating")
+		util.SetRolloutCondition(&newStatus, *cond)
 	} else if newStatus.Phase == "" {
 		newStatus.Phase = appsv1alpha1.RolloutPhaseInitial
 	}
@@ -72,8 +72,8 @@ func (r *RolloutReconciler) checkRolloutStatus(rollout *appsv1alpha1.Rollout) er
 		if workload.InRolloutProgressing {
 			klog.Infof("rollout(%s/%s) status phase from(%s) -> to(%s)", rollout.Namespace, rollout.Name, appsv1alpha1.RolloutPhaseHealthy, appsv1alpha1.RolloutPhaseProgressing)
 			newStatus.Phase = appsv1alpha1.RolloutPhaseProgressing
-			cond := util.NewRolloutCondition(appsv1alpha1.RolloutConditionProgressing, corev1.ConditionFalse, appsv1alpha1.ProgressingReasonInitializing, "initiate rollout progressing action")
-			util.SetRolloutCondition(&newStatus, cond)
+			cond := util.NewRolloutCondition(appsv1alpha1.RolloutConditionProgressing, corev1.ConditionFalse, appsv1alpha1.ProgressingReasonInitializing, "Rollout is in Progressing")
+			util.SetRolloutCondition(&newStatus, *cond)
 		}
 	case appsv1alpha1.RolloutPhaseProgressing:
 		cond := util.GetRolloutCondition(newStatus, appsv1alpha1.RolloutConditionProgressing)

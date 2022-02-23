@@ -31,21 +31,21 @@ func GetNamespace() string {
 	if ns := os.Getenv("POD_NAMESPACE"); len(ns) > 0 {
 		return ns
 	}
-	return "kruise-system"
+	return "kruise-rollout"
 }
 
 func GetSecretName() string {
 	if name := os.Getenv("SECRET_NAME"); len(name) > 0 {
 		return name
 	}
-	return "rollout-webhook-certs"
+	return "kruise-rollout-webhook-certs"
 }
 
 func GetServiceName() string {
 	if name := os.Getenv("SERVICE_NAME"); len(name) > 0 {
 		return name
 	}
-	return "rollout-webhook-service"
+	return "kruise-rollout-webhook-service"
 }
 
 func GetPort() int {
@@ -64,7 +64,7 @@ func GetCertDir() string {
 	if p := os.Getenv("WEBHOOK_CERT_DIR"); len(p) > 0 {
 		return p
 	}
-	return "/tmp/rollout-webhook-certs"
+	return "/tmp/kruise-rollout-webhook-certs"
 }
 
 func GetCertWriter() string {

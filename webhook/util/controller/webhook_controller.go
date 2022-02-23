@@ -47,8 +47,8 @@ import (
 )
 
 const (
-	mutatingWebhookConfigurationName   = "rollouts-mutating-webhook-configuration"
-	validatingWebhookConfigurationName = "rollouts-validating-webhook-configuration"
+	mutatingWebhookConfigurationName   = "kruise-rollout-mutating-webhook-configuration"
+	validatingWebhookConfigurationName = "kruise-rollout-validating-webhook-configuration"
 
 	defaultResyncPeriod = time.Minute
 )
