@@ -33,8 +33,8 @@ import (
 )
 
 const (
-	mutatingWebhookConfigurationName   = "rollout-mutating-webhook-configuration"
-	validatingWebhookConfigurationName = "rollout-validating-webhook-configuration"
+	mutatingWebhookConfigurationName   = "kruise-rollout-mutating-webhook-configuration"
+	validatingWebhookConfigurationName = "kruise-rollout-validating-webhook-configuration"
 )
 
 func Ensure(kubeClient clientset.Interface, handlers map[string]admission.Handler, caBundle []byte) error {

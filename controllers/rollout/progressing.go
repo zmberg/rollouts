@@ -49,7 +49,7 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *appsv1alpha1.Ro
 			klog.Errorf("rollout(%s/%s) doProgressingInitializing error(%s)", rollout.Namespace, rollout.Name, err.Error())
 			return nil, err
 		} else if done {
-			progressingStateTransition(newStatus, corev1.ConditionFalse, appsv1alpha1.ProgressingReasonInRolling, "rollout is InRolling")
+			progressingStateTransition(newStatus, corev1.ConditionFalse, appsv1alpha1.ProgressingReasonInRolling, "Rollout is in Progressing")
 		} else {
 			// Incomplete, recheck
 			expectedTime := time.Now().Add(3 * time.Second)
@@ -66,7 +66,7 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *appsv1alpha1.Ro
 				newStatus.CanaryStatus.CanaryRevision = workload.CurrentPodTemplateHash
 			}
 			klog.Infof("rollout(%s/%s) workload has been rollback, then rollout canceled", rollout.Namespace, rollout.Name)
-			progressingStateTransition(newStatus, corev1.ConditionFalse, appsv1alpha1.ProgressingReasonCancelling, "workload has been rollback, then rollout canceled")
+			progressingStateTransition(newStatus, corev1.ConditionFalse, appsv1alpha1.ProgressingReasonCancelling, "The workload has been rolled back and the rollout process has been cancelled")
 			// In case of continuous publishing(v1 -> v2 -> v3), then restart publishing
 		} else if newStatus.CanaryStatus.CanaryRevision != "" && newStatus.CanaryRevision != newStatus.CanaryStatus.CanaryRevision {
 			klog.Infof("rollout(%s/%s) workload continuous publishing canaryRevision from(%s) -> to(%s), then restart publishing",
@@ -76,7 +76,7 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *appsv1alpha1.Ro
 				klog.Errorf("rollout(%s/%s) doProgressingReset failed: %s", rollout.Namespace, rollout.Name, err.Error())
 				return nil, err
 			} else if done {
-				progressingStateTransition(newStatus, corev1.ConditionFalse, appsv1alpha1.ProgressingReasonInitializing, "workload is continuous release")
+				progressingStateTransition(newStatus, corev1.ConditionFalse, appsv1alpha1.ProgressingReasonInitializing, "Workload is continuous release")
 				klog.Infof("rollout(%s/%s) workload is continuous publishing, reset complete", rollout.Namespace, rollout.Name)
 			} else {
 				// Incomplete, recheck
@@ -88,14 +88,14 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *appsv1alpha1.Ro
 			// pause rollout
 		} else if rollout.Spec.Strategy.Paused {
 			klog.Infof("rollout(%s/%s) is Progressing, but paused", rollout.Namespace, rollout.Name)
-			progressingStateTransition(newStatus, corev1.ConditionFalse, appsv1alpha1.ProgressingReasonPaused, "rollout is paused")
+			progressingStateTransition(newStatus, corev1.ConditionFalse, appsv1alpha1.ProgressingReasonPaused, "Rollout has been paused, you can resume it by kube-cli")
 		} else {
 			klog.Infof("rollout(%s/%s) is Progressing, and in reason(%s)", rollout.Namespace, rollout.Name, cond.Reason)
 			//check if progressing is done
-			if len(rollout.Spec.Strategy.Canary.Steps) == int(newStatus.CanaryStatus.CurrentStepIndex+1) &&
+			if len(rollout.Spec.Strategy.Canary.Steps) == int(newStatus.CanaryStatus.CurrentStepIndex) &&
 				newStatus.CanaryStatus.CurrentStepState == appsv1alpha1.CanaryStepStateCompleted {
 				klog.Infof("rollout(%s/%s) progressing rolling done", rollout.Namespace, rollout.Name)
-				progressingStateTransition(newStatus, corev1.ConditionTrue, appsv1alpha1.ProgressingReasonFinalising, "")
+				progressingStateTransition(newStatus, corev1.ConditionTrue, appsv1alpha1.ProgressingReasonFinalising, "Rollout has been completed and some closing work is being done")
 			} else { // rollout is in rolling
 				recheckTime, err = r.doProgressingInRolling(rollout, newStatus)
 				if err != nil {
@@ -112,13 +112,13 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *appsv1alpha1.Ro
 			return nil, err
 			// finalizer is finished
 		} else if done {
-			progressingStateTransition(newStatus, corev1.ConditionTrue, appsv1alpha1.ProgressingReasonSucceeded, "rollout is success")
+			progressingStateTransition(newStatus, corev1.ConditionTrue, appsv1alpha1.ProgressingReasonSucceeded, "Rollout has been completed, and succeed")
 		}
 
 	case appsv1alpha1.ProgressingReasonPaused:
 		if !rollout.Spec.Strategy.Paused {
 			klog.Infof("rollout(%s/%s) is Progressing, but paused", rollout.Namespace, rollout.Name)
-			progressingStateTransition(newStatus, corev1.ConditionFalse, appsv1alpha1.ProgressingReasonInRolling, "rollout is InRolling")
+			progressingStateTransition(newStatus, corev1.ConditionFalse, appsv1alpha1.ProgressingReasonInRolling, "")
 		}
 
 	case appsv1alpha1.ProgressingReasonCancelling:
@@ -129,7 +129,7 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *appsv1alpha1.Ro
 			return nil, err
 			// finalizer is finished
 		} else if done {
-			progressingStateTransition(newStatus, corev1.ConditionFalse, appsv1alpha1.ProgressingReasonCanceled, "workload has been rollback, then rollout canceled")
+			progressingStateTransition(newStatus, corev1.ConditionFalse, appsv1alpha1.ProgressingReasonCanceled, "")
 		}
 
 	case appsv1alpha1.ProgressingReasonSucceeded, appsv1alpha1.ProgressingReasonCanceled:
@@ -145,8 +145,18 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *appsv1alpha1.Ro
 }
 
 func progressingStateTransition(status *appsv1alpha1.RolloutStatus, condStatus corev1.ConditionStatus, reason, message string) {
-	cond := util.NewRolloutCondition(appsv1alpha1.RolloutConditionProgressing, condStatus, reason, message)
-	util.SetRolloutCondition(status, cond)
+	cond := util.GetRolloutCondition(*status, appsv1alpha1.RolloutConditionProgressing)
+	if cond == nil {
+		cond = util.NewRolloutCondition(appsv1alpha1.RolloutConditionProgressing, condStatus, reason, message)
+	} else {
+		cond.Status = condStatus
+		cond.Reason = reason
+		if message != "" {
+			cond.Message = message
+		}
+	}
+	util.SetRolloutCondition(status, *cond)
+	status.Message = cond.Message
 }
 
 func (r *RolloutReconciler) doProgressingInitializing(rollout *appsv1alpha1.Rollout, newStatus *appsv1alpha1.RolloutStatus) (bool, string, error) {

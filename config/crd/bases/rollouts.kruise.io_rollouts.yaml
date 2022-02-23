@@ -29,6 +29,10 @@ spec:
       jsonPath: .status.canaryStatus.currentStepState
       name: CANARY_STATE
       type: string
+    - description: The rollout canary status message
+      jsonPath: .status.message
+      name: MESSAGE
+      type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:

@@ -98,7 +98,7 @@ func (r *innerBatchController) BatchReleaseState() (*BatchReleaseState, error) {
 	state := &BatchReleaseState{
 		UpdateRevision:       batch.Status.UpdateRevision,
 		StableRevision:       batch.Status.StableRevision,
-		CurrentBatch:         batch.Status.CanaryStatus.CurrentBatch,
+		CurrentBatch:         batch.Status.CanaryStatus.CurrentBatch + 1,
 		UpdatedReplicas:      batch.Status.CanaryStatus.UpdatedReplicas,
 		UpdatedReadyReplicas: batch.Status.CanaryStatus.UpdatedReadyReplicas,
 		Paused:               batch.Spec.ReleasePlan.Paused,
@@ -112,6 +112,7 @@ func (r *innerBatchController) BatchReleaseState() (*BatchReleaseState, error) {
 }
 
 func (r *innerBatchController) PromoteBatch(index int32) error {
+	index = index - 1
 	batch := &appsv1alpha1.BatchRelease{}
 	if err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		if err := r.Get(context.TODO(), client.ObjectKey{Namespace: r.rollout.Namespace, Name: r.batchName}, batch); err != nil {

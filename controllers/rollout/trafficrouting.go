@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/openkruise/rollouts/pkg/util"
 	"time"
 
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
@@ -37,6 +38,7 @@ import (
 )
 
 func (r *rolloutContext) doCanaryTrafficRouting() (bool, error) {
+	canaryStatus := r.newStatus.CanaryStatus
 	//fetch stable service
 	sName := r.rollout.Spec.Strategy.Canary.TrafficRouting.Service
 	r.stableService = &corev1.Service{}
@@ -49,7 +51,6 @@ func (r *rolloutContext) doCanaryTrafficRouting() (bool, error) {
 		}
 		return false, err
 	}
-	canaryStatus := r.newStatus.CanaryStatus
 	canaryStatus.CanaryService = fmt.Sprintf("%s-canary", sName)
 	// fetch canary service
 	// todo for the time being, we do not consider the scenario where the user only changes the stable service definition during rollout progressing
@@ -105,8 +106,11 @@ func (r *rolloutContext) doCanaryTrafficRouting() (bool, error) {
 	}
 	var desiredWeight int32
 	if len(r.rollout.Spec.Strategy.Canary.Steps) > 0 {
-		desiredWeight = r.rollout.Spec.Strategy.Canary.Steps[r.newStatus.CanaryStatus.CurrentStepIndex].Weight
+		desiredWeight = r.rollout.Spec.Strategy.Canary.Steps[r.newStatus.CanaryStatus.CurrentStepIndex-1].Weight
 	}
+	steps := len(r.rollout.Spec.Strategy.Canary.Steps)
+	cond := util.GetRolloutCondition(*r.newStatus, appsv1alpha1.RolloutConditionProgressing)
+	cond.Message = fmt.Sprintf("Rollout is in step(%d/%d), and route traffic weight(%d)", canaryStatus.CurrentStepIndex, steps, desiredWeight)
 	verify, err := trController.VerifyTrafficRouting(desiredWeight)
 	if err != nil {
 		return false, err
