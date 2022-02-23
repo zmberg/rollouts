@@ -49,28 +49,52 @@ func initializeStatusIfNeeds(status *v1alpha1.BatchReleaseStatus) {
 	}
 }
 
-func signalStart(status *v1alpha1.BatchReleaseStatus) {
+func signalStart(status *v1alpha1.BatchReleaseStatus) bool {
+	if status.Phase == v1alpha1.RolloutPhaseHealthy {
+		return false
+	}
 	status.Phase = v1alpha1.RolloutPhaseHealthy
+	return true
 }
 
-func signalRestart(status *v1alpha1.BatchReleaseStatus) {
+func signalRestart(status *v1alpha1.BatchReleaseStatus) bool {
+	if status.Phase == v1alpha1.RolloutPhaseInitial {
+		return false
+	}
 	resetStatus(status)
+	return true
 }
 
-func signalRecalculate(status *v1alpha1.BatchReleaseStatus) {
+func signalRecalculate(status *v1alpha1.BatchReleaseStatus) bool {
+	if status.CanaryStatus.CurrentBatchState == v1alpha1.InitializeBatchState {
+		return false
+	}
 	status.CanaryStatus.CurrentBatchState = v1alpha1.InitializeBatchState
+	return true
 }
 
-func signalTerminating(status *v1alpha1.BatchReleaseStatus) {
+func signalTerminating(status *v1alpha1.BatchReleaseStatus) bool {
+	if status.Phase == v1alpha1.RolloutPhaseTerminating {
+		return false
+	}
 	status.Phase = v1alpha1.RolloutPhaseTerminating
+	return true
 }
 
-func signalFinalize(status *v1alpha1.BatchReleaseStatus) {
+func signalFinalize(status *v1alpha1.BatchReleaseStatus) bool {
+	if status.Phase == v1alpha1.RolloutPhaseFinalizing {
+		return false
+	}
 	status.Phase = v1alpha1.RolloutPhaseFinalizing
+	return true
 }
 
-func signalAbort(status *v1alpha1.BatchReleaseStatus) {
+func signalAbort(status *v1alpha1.BatchReleaseStatus) bool {
+	if status.Phase == v1alpha1.RolloutPhaseAbort {
+		return false
+	}
 	status.Phase = v1alpha1.RolloutPhaseAbort
+	return true
 }
 
 func resetStatus(status *v1alpha1.BatchReleaseStatus) {

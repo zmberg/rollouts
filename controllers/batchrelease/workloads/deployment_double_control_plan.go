@@ -325,7 +325,6 @@ func (c *DeploymentsRolloutController) NeedsRollingBack() (bool, error) {
 	}
 	for _, rs := range rss {
 		if c.releaseStatus.StableRevision != "" && *rs.Spec.Replicas > 0 &&
-			c.releaseStatus.StableRevision == rs.Labels[apps.DefaultDeploymentUniqueLabelKey] &&
 			util.EqualIgnoreHash(&rs.Spec.Template, &c.stable.Spec.Template) {
 			return true, nil
 		}
@@ -364,7 +363,7 @@ func (c *DeploymentsRolloutController) fetchCanaryDeployment() error {
 
 	ds = util.FilterActiveDeployment(ds)
 	sort.Slice(ds, func(i, j int) bool {
-		return ds[j].CreationTimestamp.Before(&ds[i].CreationTimestamp)
+		return ds[i].CreationTimestamp.After(ds[j].CreationTimestamp.Time)
 	})
 
 	if len(ds) == 0 || !util.EqualIgnoreHash(&ds[0].Spec.Template, &c.stable.Spec.Template) {
@@ -406,14 +405,8 @@ func (c *DeploymentsRolloutController) recordDeploymentRevisionAndReplicas() err
 	}
 
 	err = c.fetchCanaryDeployment()
-	if client.IgnoreNotFound(err) != nil {
+	if err != nil {
 		return err
-	}
-
-	var claimErr error
-	c.canary, claimErr = c.claimDeployment(c.stable, c.canary)
-	if claimErr != nil {
-		return claimErr
 	}
 
 	c.releaseStatus.StableRevision, err = c.GetPodTemplateHash(c.stable, Stable)

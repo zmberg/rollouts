@@ -28,10 +28,8 @@ import (
 	apps "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -189,17 +187,11 @@ func (r *BatchReleaseReconciler) updateStatus(ctx context.Context, release *v1al
 	newStatus.ObservedGeneration = release.Generation
 	newStatus.ObservedReleasePlanHash = hashReleasePlanBatches(&release.Spec.ReleasePlan)
 
-	key := types.NamespacedName{Namespace: release.Namespace, Name: release.Name}
+	// do not retry
 	if !reflect.DeepEqual(release.Status, *newStatus) {
-		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-			fetchedRelease := &v1alpha1.BatchRelease{}
-			getErr := r.Client.Get(context.TODO(), key, fetchedRelease)
-			if getErr != nil {
-				return getErr
-			}
-			fetchedRelease.Status = *newStatus
-			return r.Status().Update(ctx, fetchedRelease)
-		})
+		releaseClone := release.DeepCopy()
+		releaseClone.Status = *newStatus
+		return r.Status().Update(ctx, releaseClone)
 	}
 
 	return err

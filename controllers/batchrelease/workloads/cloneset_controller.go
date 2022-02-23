@@ -57,14 +57,17 @@ func (c *cloneSetController) claimCloneSet(clone *kruiseappsv1alpha1.CloneSet) (
 
 	patch := map[string]interface{}{}
 	switch {
+	// if the cloneSet has been claimed by this parentController
 	case controlled:
 		// make sure paused=false
-		patch = map[string]interface{}{
-			"spec": map[string]interface{}{
-				"updateStrategy": map[string]interface{}{
-					"paused": false,
+		if clone.Spec.UpdateStrategy.Paused {
+			patch = map[string]interface{}{
+				"spec": map[string]interface{}{
+					"updateStrategy": map[string]interface{}{
+						"paused": false,
+					},
 				},
-			},
+			}
 		}
 
 	default:
@@ -94,10 +97,12 @@ func (c *cloneSetController) claimCloneSet(clone *kruiseappsv1alpha1.CloneSet) (
 		}
 	}
 
-	patchByte, _ := json.Marshal(patch)
-	if err := c.client.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, patchByte)); err != nil {
-		c.recorder.Eventf(c.parentController, v1.EventTypeWarning, "ClaimCloneSetFailed", err.Error())
-		return false, err
+	if len(patch) > 0 {
+		patchByte, _ := json.Marshal(patch)
+		if err := c.client.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, patchByte)); err != nil {
+			c.recorder.Eventf(c.parentController, v1.EventTypeWarning, "ClaimCloneSetFailed", err.Error())
+			return false, err
+		}
 	}
 
 	klog.V(3).Infof("Claim CloneSet(%v) Successfully", c.targetNamespacedName)

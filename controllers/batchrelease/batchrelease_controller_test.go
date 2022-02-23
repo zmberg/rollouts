@@ -439,7 +439,7 @@ func TestReconcile_CloneSet(t *testing.T) {
 			ExpectedState: v1alpha1.InitializeBatchState,
 		},
 		{
-			Name: `Special Case: RollBack, Input-Phase=Progressing, Output-Phase=Cancelled`,
+			Name: `Special Case: RollBack, Input-Phase=Progressing, Output-Phase=Abort`,
 			GetRelease: func() client.Object {
 				release := setState(releaseClone, v1alpha1.ReadyBatchState)
 				release.Status.CanaryStatus.BatchReadyTime = metav1.Now()
@@ -462,7 +462,7 @@ func TestReconcile_CloneSet(t *testing.T) {
 					canary,
 				}
 			},
-			ExpectedPhase: v1alpha1.RolloutPhaseCancelled,
+			ExpectedPhase: v1alpha1.RolloutPhaseAbort,
 			ExpectedState: v1alpha1.ReadyBatchState,
 		},
 		{
@@ -490,7 +490,7 @@ func TestReconcile_CloneSet(t *testing.T) {
 			ExpectedState: v1alpha1.ReadyBatchState,
 		},
 		{
-			Name: `Special Case: Cancelled, Input-Phase=Progressing, Output-Phase=Cancelled`,
+			Name: `Special Case: Cancelled, Input-Phase=Progressing, Output-Phase=Terminating`,
 			GetRelease: func() client.Object {
 				release := setState(releaseClone, v1alpha1.ReadyBatchState)
 				release.Status.CanaryStatus.BatchReadyTime = metav1.Now()
@@ -510,7 +510,7 @@ func TestReconcile_CloneSet(t *testing.T) {
 					canary,
 				}
 			},
-			ExpectedPhase: v1alpha1.RolloutPhaseCancelled,
+			ExpectedPhase: v1alpha1.RolloutPhaseTerminating,
 			ExpectedState: v1alpha1.ReadyBatchState,
 		},
 		{
@@ -735,7 +735,7 @@ func TestReconcile_Deployment(t *testing.T) {
 			ExpectedState: v1alpha1.InitializeBatchState,
 		},
 		{
-			Name: `Special Case: RollBack, Input-Phase=Progressing, Output-Phase=Cancelled`,
+			Name: `Special Case: RollBack, Input-Phase=Progressing, Output-Phase=Abort`,
 			GetRelease: func() client.Object {
 				release := setState(releaseDeploy, v1alpha1.ReadyBatchState)
 				release.Status.CanaryStatus.BatchReadyTime = metav1.Now()

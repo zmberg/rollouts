@@ -196,7 +196,7 @@ func TestHandlerDeployment(t *testing.T) {
 			expectObj: func() *apps.Deployment {
 				obj := deploymentDemo.DeepCopy()
 				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
-				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"RolloutName":"rollout-demo","RolloutDone":false}`
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"RolloutName":"rollout-demo"}`
 				obj.Spec.Paused = true
 				return obj
 			},
@@ -305,7 +305,7 @@ func TestHandlerDeployment(t *testing.T) {
 				obj := deploymentDemo.DeepCopy()
 				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
 				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"RolloutName":"rollout-demo","RolloutDone":true}`
-				obj.Spec.Paused = false
+				obj.Spec.Paused = true
 				return obj
 			},
 			getRs: func() []*apps.ReplicaSet {
@@ -372,7 +372,7 @@ func TestHandlerCloneSet(t *testing.T) {
 			expectObj: func() *kruisev1aplphal.CloneSet {
 				obj := cloneSetDemo.DeepCopy()
 				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
-				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"RolloutName":"rollout-demo","RolloutDone":false}`
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"RolloutName":"rollout-demo"}`
 				obj.Spec.UpdateStrategy.Paused = true
 				return obj
 			},

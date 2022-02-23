@@ -93,6 +93,9 @@ var (
 			Labels: map[string]string{
 				"app": "busybox",
 			},
+			Annotations: map[string]string{
+				"something": "whatever",
+			},
 		},
 		Spec: kruiseappsv1alpha1.CloneSetSpec{
 			Replicas: pointer.Int32Ptr(100),
@@ -194,9 +197,12 @@ func TestCloneSetController(t *testing.T) {
 			newObject = &kruiseappsv1alpha1.CloneSet{}
 			Expect(cli.Get(context.TODO(), c.targetNamespacedName, newObject)).NotTo(HaveOccurred())
 			newObject.Spec.UpdateStrategy.Paused = oldObject.Spec.UpdateStrategy.Paused
+			newObject.Spec.UpdateStrategy.Partition = oldObject.Spec.UpdateStrategy.Partition
 			Expect(reflect.DeepEqual(oldObject.Spec, newObject.Spec)).Should(BeTrue())
 			Expect(reflect.DeepEqual(oldObject.Labels, newObject.Labels)).Should(BeTrue())
 			Expect(reflect.DeepEqual(oldObject.Finalizers, newObject.Finalizers)).Should(BeTrue())
+			oldObject.Annotations[util.StashCloneSetPartition] = ""
+			newObject.Annotations[util.StashCloneSetPartition] = ""
 			Expect(reflect.DeepEqual(oldObject.Annotations, newObject.Annotations)).Should(BeTrue())
 		})
 	}

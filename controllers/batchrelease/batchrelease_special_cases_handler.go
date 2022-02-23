@@ -17,10 +17,10 @@ limitations under the License.
 package batchrelease
 
 import (
-	"github.com/openkruise/rollouts/controllers/batchrelease/workloads"
 	"time"
 
 	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/controllers/batchrelease/workloads"
 	"github.com/openkruise/rollouts/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -43,8 +43,9 @@ func (r *Executor) checkHealthyBeforeExecution(controller workloads.WorkloadCont
 	var reason string
 	var message string
 	var action string
+	var needRetry bool
 
-	// watch the event of workload change
+	// sync the workload info and watch the workload change event
 	workloadEvent, workloadInfo, err := controller.SyncWorkloadInfo()
 
 	// Note: must keep the order of the following cases
@@ -52,54 +53,45 @@ func (r *Executor) checkHealthyBeforeExecution(controller workloads.WorkloadCont
 	case r.releasePlanTerminating():
 		reason = "PlanTerminating"
 		message = "release plan is terminating, terminate the release plan"
-		needStopThisRound = false
 		action = Terminating
 
 	case r.workloadHasGone(err):
 		reason = "WorkloadGone"
 		message = "target workload has gone, cancel the release plan"
-		needStopThisRound = false
 		action = Terminating
 
 	case client.IgnoreNotFound(err) != nil:
 		reason = "GetWorkloadError"
 		message = err.Error()
-		needStopThisRound = true
+		needRetry = true
 		action = Keep
-		result = reconcile.Result{RequeueAfter: DefaultShortDuration}
 
 	case workloadEvent == workloads.WorkloadReplicasChanged:
 		reason = "ReplicasChanged"
 		message = "workload is scaling, recalculate the canary batch"
-		needStopThisRound = true
 		action = Recalculate
 
 	case r.releasePlanPaused():
 		reason = "PlanPaused"
 		message = "release plan is paused, no need to reconcile"
-		needStopThisRound = true
 		action = Keep
 
 	case r.releasePlanUnhealthy():
 		reason = "PlanStatusUnhealthy"
 		message = "release plan status is unhealthy, try to restart the release plan"
-		needStopThisRound = true
 		action = Restart
 
 	case r.releasePlanChanged():
 		reason = "PlanChanged"
 		message = "release plan was changed, try to recalculate the canary status"
-		needStopThisRound = true
 		action = Recalculate
 
 	case r.locatedWorkloadAndStart(err):
-		needStopThisRound = false
 		action = Start
 
 	case workloadEvent == workloads.WorkloadRollback:
 		reason = "StableOrRollback"
 		message = "workload is table or rolling back, abort the release plan"
-		needStopThisRound = false
 		action = Abort
 
 	case workloadEvent == workloads.WorkloadPodTemplateChanged:
@@ -107,18 +99,15 @@ func (r *Executor) checkHealthyBeforeExecution(controller workloads.WorkloadCont
 		// Rollout controller needs route traffic firstly
 		if !util.IsControlledByRollout(r.release) {
 			message = "workload revision was changed, try to restart the release plan"
-			needStopThisRound = true
 			action = Restart
 		} else {
 			message = "workload revision was changed, stop the release plan"
-			needStopThisRound = false
 			action = Finalize
 		}
 
 	case workloadEvent == workloads.WorkloadUnHealthy:
 		reason = "WorkloadUnHealthy"
 		message = "workload is UnHealthy, should stop the release plan"
-		needStopThisRound = true
 		action = Keep
 
 	case workloadEvent == workloads.WorkloadStillReconciling:
@@ -126,7 +115,7 @@ func (r *Executor) checkHealthyBeforeExecution(controller workloads.WorkloadCont
 			reason = "WorkloadNotStable"
 			message = "workload status is not stable, wait for it to be stable"
 		}
-		needStopThisRound = true
+		needRetry = true
 		action = Keep
 
 	default:
@@ -164,24 +153,36 @@ func (r *Executor) checkHealthyBeforeExecution(controller workloads.WorkloadCont
 			r.releaseStatus.CanaryStatus.UpdatedReplicas = workloadInfo.Status.UpdatedReplicas
 			r.releaseStatus.CanaryStatus.UpdatedReadyReplicas = workloadInfo.Status.UpdatedReadyReplicas
 		}
+		planHash := hashReleasePlanBatches(r.releasePlan)
+		if r.releaseStatus.ObservedReleasePlanHash != planHash {
+			r.releaseStatus.ObservedReleasePlanHash = planHash
+		}
 	}
 
+	// if status phase or state changed, should stop and retry.
+	// this is because we must ensure that the phase and state is
+	// persistent in ETCD, or will lead to the chaos of state machine.
 	switch action {
 	case Keep:
 		// keep current status, do nothing
+		needStopThisRound = true
 	case Start:
-		signalStart(r.releaseStatus)
+		needRetry = signalStart(r.releaseStatus)
 	case Abort:
-		signalAbort(r.releaseStatus)
-	case Terminating:
-		signalTerminating(r.releaseStatus)
-	case Finalize:
-		signalFinalize(r.releaseStatus)
+		needRetry = signalAbort(r.releaseStatus)
 	case Restart:
-		signalRestart(r.releaseStatus)
-		result = reconcile.Result{RequeueAfter: DefaultShortDuration}
+		needRetry = signalRestart(r.releaseStatus)
+	case Finalize:
+		needRetry = signalFinalize(r.releaseStatus)
 	case Recalculate:
-		signalRecalculate(r.releaseStatus)
+		needRetry = signalRecalculate(r.releaseStatus)
+	case Terminating:
+		needRetry = signalTerminating(r.releaseStatus)
+	}
+
+	// If it needs to retry
+	if needRetry {
+		needStopThisRound = true
 		result = reconcile.Result{RequeueAfter: DefaultShortDuration}
 	}
 
