@@ -74,7 +74,7 @@ func (r *RolloutReconciler) doFinalising(rollout *appsv1alpha1.Rollout, newStatu
 		klog.Errorf("rollout(%s/%s) Progressing failed: %s", rollout.Namespace, rollout.Name, err.Error())
 		return false, nil, err
 	} else if !done {
-		klog.Infof("rollout(%s/%s) finalizer is not finished, and time(%s) retry reconcile", rollout.Namespace, rollout.Name, rolloutCon.recheckTime.String())
+		klog.Infof("rollout(%s/%s) finalizer is not finished, and retry reconcile", rollout.Namespace, rollout.Name)
 		return false, rolloutCon.recheckTime, nil
 	}
 	//newStatus.CanaryStatus = nil

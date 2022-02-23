@@ -277,7 +277,7 @@ func (c *DeploymentsRolloutController) SyncWorkloadInfo() (WorkloadChangeEventTy
 	var updateRevision string
 	switch c.releaseStatus.Phase {
 	// these two phase should not care about too many event types
-	case v1alpha1.RolloutPhaseInitial, v1alpha1.RolloutPhaseHealthy:
+	case v1alpha1.RolloutPhaseHealthy, v1alpha1.RolloutPhaseInitial, v1alpha1.RolloutPhasePreparing:
 		return IgnoreWorkloadEvent, workloadInfo, nil
 
 	// any other phase should care about the following event types

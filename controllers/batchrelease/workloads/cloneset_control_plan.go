@@ -285,7 +285,7 @@ func (c *CloneSetRolloutController) SyncWorkloadInfo() (WorkloadChangeEventType,
 			return WorkloadPodTemplateChanged, workloadInfo, nil
 		}
 
-	case v1alpha1.RolloutPhaseHealthy, v1alpha1.RolloutPhaseInitial:
+	case v1alpha1.RolloutPhaseHealthy, v1alpha1.RolloutPhaseInitial, v1alpha1.RolloutPhasePreparing:
 		return IgnoreWorkloadEvent, workloadInfo, nil
 	}
 
