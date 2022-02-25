@@ -204,9 +204,9 @@ func validateRolloutSpecCanarySteps(steps []appsv1alpha1.CanaryStep, fldPath *fi
 		return field.ErrorList{field.Invalid(fldPath, steps, "The number of Canary.Steps cannot be empty")}
 	}
 
-	if steps[stepCount-1].Weight != 100 {
-		return field.ErrorList{field.Invalid(fldPath, steps, "The 'Weight' field of the last CanaryStep must be '100'")}
-	}
+	//if steps[stepCount-1].Weight != 100 {
+	//	return field.ErrorList{field.Invalid(fldPath, steps, "The 'Weight' field of the last CanaryStep must be '100'")}
+	//}
 
 	for i := range steps {
 		s := &steps[i]

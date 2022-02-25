@@ -239,16 +239,16 @@ func TestRolloutValidateCreate(t *testing.T) {
 				return []client.Object{object}
 			},
 		},
-		{
-			Name:    "The last Steps.Weight is not 100",
-			Succeed: false,
-			GetObject: func() []client.Object {
-				object := rollout.DeepCopy()
-				n := len(object.Spec.Strategy.Canary.Steps)
-				object.Spec.Strategy.Canary.Steps[n-1].Weight = 80
-				return []client.Object{object}
-			},
-		},
+		//{
+		//	Name:    "The last Steps.Weight is not 100",
+		//	Succeed: false,
+		//	GetObject: func() []client.Object {
+		//		object := rollout.DeepCopy()
+		//		n := len(object.Spec.Strategy.Canary.Steps)
+		//		object.Spec.Strategy.Canary.Steps[n-1].Weight = 80
+		//		return []client.Object{object}
+		//	},
+		//},
 		{
 			Name:    "Wrong objectRef type",
 			Succeed: false,

@@ -109,7 +109,7 @@ var _ = SIGDescribe("Rollout", func() {
 			clone := &apps.Deployment{}
 			Expect(GetObject(deployment.Name, clone)).NotTo(HaveOccurred())
 			return clone.Status.ObservedGeneration == clone.Generation && clone.Status.Replicas == clone.Status.ReadyReplicas
-		}, time.Minute, time.Second).Should(BeTrue())
+		}, 10*time.Minute, time.Second).Should(BeTrue())
 	}
 
 	WaitRolloutCanaryStepPaused := func(name string, stepIndex int32) {
@@ -120,7 +120,7 @@ var _ = SIGDescribe("Rollout", func() {
 				return false
 			}
 			return clone.Status.CanaryStatus.CurrentStepIndex == stepIndex && clone.Status.CanaryStatus.CurrentStepState == rolloutsv1alpha1.CanaryStepStatePaused
-		}, time.Minute, time.Second).Should(BeTrue())
+		}, 10*time.Minute, time.Second).Should(BeTrue())
 	}
 
 	WaitRolloutStatusPhase := func(name string, phase rolloutsv1alpha1.RolloutPhase) {
@@ -213,16 +213,16 @@ var _ = SIGDescribe("Rollout", func() {
 					Replicas: &replicas,
 					Pause:    rolloutsv1alpha1.RolloutPause{},
 				},
-				{
-					Weight: 60,
-					Pause: rolloutsv1alpha1.RolloutPause{
-						Duration: utilpointer.Int32(30),
-					},
-				},
-				{
-					Weight: 100,
-					Pause:  rolloutsv1alpha1.RolloutPause{},
-				},
+				//{
+				//	Weight: 60,
+				//	Pause: rolloutsv1alpha1.RolloutPause{
+				//		Duration: utilpointer.Int32(30),
+				//	},
+				//},
+				//{
+				//	Weight: 100,
+				//	Pause:  rolloutsv1alpha1.RolloutPause{},
+				//},
 			}
 			CreateObject(rollout)
 
