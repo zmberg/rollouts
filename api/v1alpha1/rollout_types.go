@@ -87,7 +87,8 @@ type RolloutStrategy struct {
 type RolloutStrategyType string
 
 const (
-	RolloutStrategyCanary RolloutStrategyType = "canary"
+	RolloutStrategyCanary    RolloutStrategyType = "canary"
+	RolloutStrategyBlueGreen RolloutStrategyType = "blueGreen"
 )
 
 // CanaryStrategy defines parameters for a Replica Based Canary
@@ -96,7 +97,8 @@ type CanaryStrategy struct {
 	// +optional
 	Steps []CanaryStep `json:"steps,omitempty"`
 	// TrafficRouting hosts all the supported service meshes supported to enable more fine-grained traffic routing
-	TrafficRouting *TrafficRouting `json:"trafficRouting,omitempty"`
+	// current only support one
+	TrafficRouting []*TrafficRouting `json:"trafficRouting,omitempty"`
 	// MetricsAnalysis *MetricsAnalysisBackground `json:"metricsAnalysis,omitempty"`
 }
 
@@ -239,11 +241,12 @@ type CanaryStatus struct {
 type CanaryStepState string
 
 const (
-	CanaryStepStateUpgrade         CanaryStepState = "StepInUpgrade"
-	CanaryStepStateTrafficRouting  CanaryStepState = "StepInTrafficRouting"
-	CanaryStepStateMetricsAnalysis CanaryStepState = "StepInMetricsAnalysis"
-	CanaryStepStatePaused          CanaryStepState = "StepInPaused"
-	CanaryStepStateCompleted       CanaryStepState = "StepInCompleted"
+	CanaryStepStateUpgrade         CanaryStepState = "StepUpgrade"
+	CanaryStepStateTrafficRouting  CanaryStepState = "StepTrafficRouting"
+	CanaryStepStateMetricsAnalysis CanaryStepState = "StepMetricsAnalysis"
+	CanaryStepStatePaused          CanaryStepState = "StepPaused"
+	CanaryStepStateReady           CanaryStepState = "StepReady"
+	CanaryStepStateCompleted       CanaryStepState = "Completed"
 )
 
 // RolloutPhase are a set of phases that this rollout

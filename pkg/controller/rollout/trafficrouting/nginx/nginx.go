@@ -96,7 +96,7 @@ func (r *nginxController) SetRoutes(desiredWeight int32) error {
 	if desiredWeight == currentWeight {
 		return nil
 	}
-	body := fmt.Sprintf(`{"metadata":{"annotations":{"%s/canary-weight":%s}}}`, nginxIngressAnnotationDefaultPrefix, fmt.Sprintf("%d", desiredWeight))
+	body := fmt.Sprintf(`{"metadata":{"annotations":{"%s/canary-weight":"%s"}}}`, nginxIngressAnnotationDefaultPrefix, fmt.Sprintf("%d", desiredWeight))
 	if err = r.Patch(context.TODO(), canaryIngress, client.RawPatch(types.StrategicMergePatchType, []byte(body))); err != nil {
 		klog.Errorf("rollout(%s/%s) set canary ingress(%s) failed: %s", r.conf.RolloutNs, r.conf.RolloutName, canaryIngress.Name, err.Error())
 		return err

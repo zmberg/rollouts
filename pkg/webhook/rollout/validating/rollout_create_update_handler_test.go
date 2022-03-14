@@ -58,11 +58,13 @@ var (
 							Weight: 100,
 						},
 					},
-					TrafficRouting: &appsv1alpha1.TrafficRouting{
-						Type:    appsv1alpha1.TrafficRoutingNginx,
-						Service: "service-demo",
-						Nginx: &appsv1alpha1.NginxTrafficRouting{
-							Ingress: "ingress-nginx-demo",
+					TrafficRouting: []*appsv1alpha1.TrafficRouting{
+						{
+							Type:    appsv1alpha1.TrafficRoutingNginx,
+							Service: "service-demo",
+							Nginx: &appsv1alpha1.NginxTrafficRouting{
+								Ingress: "ingress-nginx-demo",
+							},
 						},
 					},
 				},
@@ -130,7 +132,7 @@ func TestRolloutValidateCreate(t *testing.T) {
 			Succeed: false,
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
-				object.Spec.Strategy.Canary.TrafficRouting.Nginx = nil
+				object.Spec.Strategy.Canary.TrafficRouting[0].Nginx = nil
 				return []client.Object{object}
 			},
 		},
@@ -142,7 +144,7 @@ func TestRolloutValidateCreate(t *testing.T) {
 			Succeed: false,
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
-				object.Spec.Strategy.Canary.TrafficRouting.Service = ""
+				object.Spec.Strategy.Canary.TrafficRouting[0].Service = ""
 				return []client.Object{object}
 			},
 		},
@@ -151,7 +153,7 @@ func TestRolloutValidateCreate(t *testing.T) {
 			Succeed: false,
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
-				object.Spec.Strategy.Canary.TrafficRouting.Nginx.Ingress = ""
+				object.Spec.Strategy.Canary.TrafficRouting[0].Nginx.Ingress = ""
 				return []client.Object{object}
 			},
 		},
@@ -273,7 +275,7 @@ func TestRolloutValidateCreate(t *testing.T) {
 			Succeed: false,
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
-				object.Spec.Strategy.Canary.TrafficRouting.Type = "Whatever"
+				object.Spec.Strategy.Canary.TrafficRouting[0].Type = "Whatever"
 				return []client.Object{object}
 			},
 		},

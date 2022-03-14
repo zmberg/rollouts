@@ -2,19 +2,15 @@
 FROM golang:1.16 as builder
 
 WORKDIR /workspace
+
 # Copy the Go Modules manifests
 COPY go.mod go.mod
 COPY go.sum go.sum
 
-# Copy the dependencies
-COPY vendor/ vendor/
-
 # Copy the go source
 COPY main.go main.go
 COPY api/ api/
-COPY pkg/controllers/ controllers/
 COPY pkg/ pkg/
-COPY pkg/webhook/ webhook/
 
 # Build
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o manager main.go

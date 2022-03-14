@@ -95,9 +95,8 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *rolloutv1alpha1
 			progressingStateTransition(newStatus, corev1.ConditionFalse, rolloutv1alpha1.ProgressingReasonPaused, "Rollout has been paused, you can resume it by kube-cli")
 		} else {
 			klog.Infof("rollout(%s/%s) is Progressing, and in reason(%s)", rollout.Namespace, rollout.Name, cond.Reason)
-			//check if progressing is done
-			if len(rollout.Spec.Strategy.Canary.Steps) == int(newStatus.CanaryStatus.CurrentStepIndex) &&
-				newStatus.CanaryStatus.CurrentStepState == rolloutv1alpha1.CanaryStepStateCompleted {
+			//check if canary is done
+			if newStatus.CanaryStatus.CurrentStepState == rolloutv1alpha1.CanaryStepStateCompleted {
 				klog.Infof("rollout(%s/%s) progressing rolling done", rollout.Namespace, rollout.Name)
 				progressingStateTransition(newStatus, corev1.ConditionTrue, rolloutv1alpha1.ProgressingReasonFinalising, "Rollout has been completed and some closing work is being done")
 			} else { // rollout is in rolling
@@ -236,7 +235,7 @@ func (r *RolloutReconciler) verifyCanaryStrategy(rollout *rolloutv1alpha1.Rollou
 	canary := rollout.Spec.Strategy.Canary
 	// Traffic routing
 	if canary.TrafficRouting != nil {
-		if ok, msg, err := r.verifyTrafficRouting(rollout.Namespace, canary.TrafficRouting); !ok {
+		if ok, msg, err := r.verifyTrafficRouting(rollout.Namespace, canary.TrafficRouting[0]); !ok {
 			return ok, msg, err
 		}
 	}

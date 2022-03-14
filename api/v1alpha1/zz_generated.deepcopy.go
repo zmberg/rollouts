@@ -198,8 +198,14 @@ func (in *CanaryStrategy) DeepCopyInto(out *CanaryStrategy) {
 	}
 	if in.TrafficRouting != nil {
 		in, out := &in.TrafficRouting, &out.TrafficRouting
-		*out = new(TrafficRouting)
-		(*in).DeepCopyInto(*out)
+		*out = make([]*TrafficRouting, len(*in))
+		for i := range *in {
+			if (*in)[i] != nil {
+				in, out := &(*in)[i], &(*out)[i]
+				*out = new(TrafficRouting)
+				(*in).DeepCopyInto(*out)
+			}
+		}
 	}
 }
 
