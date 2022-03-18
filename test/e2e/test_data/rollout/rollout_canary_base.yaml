@@ -25,5 +25,5 @@ spec:
       trafficRouting:
       - service: echoserver
         type: nginx
-        nginx:
-          ingress: echoserver
+        ingress:
+          name: echoserver

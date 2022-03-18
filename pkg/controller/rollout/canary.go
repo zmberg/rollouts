@@ -19,11 +19,11 @@ package rollout
 import (
 	"context"
 	"fmt"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"time"
 
 	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/pkg/controller/rollout/batchrelease"
 	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -36,13 +36,12 @@ import (
 
 func (r *rolloutContext) runCanary() error {
 	canaryStatus := r.newStatus.CanaryStatus
-	// In case of continuous publishing(v1 -> v2 -> v3), then restart publishing
+	// init canary status
 	if canaryStatus.CanaryRevision == "" {
 		canaryStatus.CurrentStepState = rolloutv1alpha1.CanaryStepStateUpgrade
 		canaryStatus.CanaryRevision = r.workload.CanaryRevision
-	}
-	if canaryStatus.CurrentStepIndex == 0 {
 		canaryStatus.CurrentStepIndex = 1
+		canaryStatus.RolloutHash = r.rollout.Annotations[util.RolloutHashAnnotation]
 	}
 	if r.rollout.Spec.Strategy.Canary.TrafficRouting[0].GracePeriodSeconds <= 0 {
 		r.rollout.Spec.Strategy.Canary.TrafficRouting[0].GracePeriodSeconds = defaultGracePeriodSeconds
@@ -131,9 +130,8 @@ func (r *rolloutContext) runCanary() error {
 }
 
 func (r *rolloutContext) doCanaryUpgrade() (bool, error) {
-	steps := len(r.rollout.Spec.Strategy.Canary.Steps)
 	// only traffic routing
-	/*if len(r.rollout.Spec.Strategy.Canary.Steps) == 0 {
+	if len(r.rollout.Spec.Strategy.Canary.Steps) == 0 {
 		if r.workload.CanaryReadyReplicas > 0 {
 			klog.Infof("rollout(%s/%s) workload(%s) canaryAvailable(%d), and go to the next stage",
 				r.rollout.Namespace, r.rollout.Name, r.workload.Name, r.workload.CanaryReadyReplicas)
@@ -142,32 +140,39 @@ func (r *rolloutContext) doCanaryUpgrade() (bool, error) {
 		klog.Infof("rollout(%s/%s) workload(%s) canaryAvailable(%d), and wait a moment",
 			r.rollout.Namespace, r.rollout.Name, r.workload.Name, r.workload.CanaryReadyReplicas)
 		return false, nil
-	}*/
+	}
+
+	steps := len(r.rollout.Spec.Strategy.Canary.Steps)
 	// canary release
-	batchState, err := r.batchControl.BatchReleaseState()
-	if err != nil {
+	batch, err := r.batchControl.FetchBatchRelease()
+	if errors.IsNotFound(err) {
+		// the first step, and create batch release crd
+		return false, r.batchControl.Verify(r.newStatus.CanaryStatus.CurrentStepIndex)
+	} else if err != nil {
 		return false, err
+	} else if batch.Generation != batch.Status.ObservedGeneration {
+		return false, nil
 	}
 	canaryStatus := r.newStatus.CanaryStatus
 	cond := util.GetRolloutCondition(*r.newStatus, rolloutv1alpha1.RolloutConditionProgressing)
 	cond.Message = fmt.Sprintf("Rollout is in step(%d/%d), and upgrade workload new versions", canaryStatus.CurrentStepIndex, steps)
 	r.newStatus.Message = cond.Message
 	// promote workload next batch release
-	if batchState.CurrentBatch < canaryStatus.CurrentStepIndex {
+	if *batch.Spec.ReleasePlan.BatchPartition+1 < canaryStatus.CurrentStepIndex {
 		r.recorder.Eventf(r.rollout, corev1.EventTypeNormal, "Progressing", fmt.Sprintf("start upgrade step(%d) canary pods with new versions", canaryStatus.CurrentStepIndex))
-		klog.Infof("rollout(%s/%s) will promote batch from(%d) -> to(%d)", r.rollout.Namespace, r.rollout.Name, batchState.CurrentBatch, canaryStatus.CurrentStepIndex)
+		klog.Infof("rollout(%s/%s) will promote batch from(%d) -> to(%d)", r.rollout.Namespace, r.rollout.Name, *batch.Spec.ReleasePlan.BatchPartition+1, canaryStatus.CurrentStepIndex)
 		return r.batchControl.Promote(canaryStatus.CurrentStepIndex, false)
 	}
 
 	// check whether batchRelease is ready
-	if batchState.State == batchrelease.BatchInRollingState {
-		klog.Infof("rollout(%s/%s) workload(%s) batch(%d) availableReplicas(%d) state(%s), and wait a moment",
-			r.rollout.Namespace, r.rollout.Name, r.workload.Name, canaryStatus.CurrentStepIndex, batchState.UpdatedReadyReplicas, batchState.State)
+	if batch.Status.CanaryStatus.CurrentBatchState != rolloutv1alpha1.ReadyBatchState {
+		klog.Infof("rollout(%s/%s) workload(%s) batch(%d) ReadyReplicas(%d) state(%s), and wait a moment",
+			r.rollout.Namespace, r.rollout.Name, r.workload.Name, canaryStatus.CurrentStepIndex, batch.Status.CanaryStatus.UpdatedReadyReplicas, batch.Status.CanaryStatus.CurrentBatchState)
 		return false, nil
 	}
 	r.recorder.Eventf(r.rollout, corev1.EventTypeNormal, "Progressing", fmt.Sprintf("upgrade step(%d) canary pods with new versions done", canaryStatus.CurrentStepIndex))
 	klog.Infof("rollout(%s/%s) workload(%s) batch(%d) availableReplicas(%d) state(%s), and continue",
-		r.rollout.Namespace, r.rollout.Name, r.workload.Name, canaryStatus.CurrentStepIndex, batchState.UpdatedReadyReplicas, batchState.State)
+		r.rollout.Namespace, r.rollout.Name, r.workload.Name, canaryStatus.CurrentStepIndex, batch.Status.CanaryStatus.UpdatedReadyReplicas, batch.Status.CanaryStatus.CurrentBatchState)
 	return true, nil
 }
 

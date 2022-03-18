@@ -133,16 +133,16 @@ spec:
                                 service, ingress configuration changes gracefully.
                               format: int32
                               type: integer
-                            nginx:
-                              description: Nginx holds Nginx Ingress specific configuration
-                                to route traffic
+                            ingress:
+                              description: Ingress holds Ingress specific configuration
+                                to route traffic, e.g. Nginx, Alb.
                               properties:
-                                ingress:
-                                  description: Ingress refers to the name of an `Ingress`
+                                name:
+                                  description: Name refers to the name of an `Ingress`
                                     resource in the same namespace as the `Rollout`
                                   type: string
                               required:
-                              - ingress
+                              - name
                               type: object
                             service:
                               description: Service holds the name of a service which
@@ -150,7 +150,7 @@ spec:
                                 any pods with canary version.
                               type: string
                             type:
-                              description: Nginx, Alb, Istio etc.
+                              description: nginx, alb etc.
                               type: string
                           required:
                           - type
@@ -214,6 +214,9 @@ spec:
                       observed for this Rollout ref workload generation.
                     format: int64
                     type: integer
+                  rolloutHash:
+                    description: RolloutHash
+                    type: string
                 required:
                 - canaryReadyReplicas
                 - canaryReplicas

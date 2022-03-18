@@ -50,7 +50,7 @@ type NginxConfig struct {
 	RolloutNs     string
 	CanaryService *corev1.Service
 	StableService *corev1.Service
-	TrafficConf   *rolloutv1alpha1.NginxTrafficRouting
+	TrafficConf   *rolloutv1alpha1.IngressTrafficRouting
 	OwnerRef      metav1.OwnerReference
 }
 
@@ -65,7 +65,7 @@ func NewNginxTrafficRouting(client client.Client, newStatus *rolloutv1alpha1.Rol
 
 func (r *nginxController) SetRoutes(desiredWeight int32) error {
 	stableIngress := &netv1.Ingress{}
-	err := r.Get(context.TODO(), types.NamespacedName{Namespace: r.conf.RolloutNs, Name: r.conf.TrafficConf.Ingress}, stableIngress)
+	err := r.Get(context.TODO(), types.NamespacedName{Namespace: r.conf.RolloutNs, Name: r.conf.TrafficConf.Name}, stableIngress)
 	if err != nil {
 		return err
 	} else if !stableIngress.DeletionTimestamp.IsZero() {
@@ -122,7 +122,7 @@ func (r *nginxController) Verify(desiredWeight int32) (bool, error) {
 		}
 		// stable ingress
 		stableIngress := &netv1.Ingress{}
-		err = r.Get(context.TODO(), types.NamespacedName{Namespace: r.conf.RolloutNs, Name: r.conf.TrafficConf.Ingress}, stableIngress)
+		err = r.Get(context.TODO(), types.NamespacedName{Namespace: r.conf.RolloutNs, Name: r.conf.TrafficConf.Name}, stableIngress)
 		if err != nil && !errors.IsNotFound(err) {
 			return false, err
 		}
@@ -228,7 +228,7 @@ func (r *nginxController) buildCanaryIngress(stableIngress *netv1.Ingress, desir
 }
 
 func (r *nginxController) defaultCanaryIngressName() string {
-	return fmt.Sprintf("%s-canary", r.conf.TrafficConf.Ingress)
+	return fmt.Sprintf("%s-canary", r.conf.TrafficConf.Name)
 }
 
 func getIngressCanaryWeight(ing *netv1.Ingress) int32 {

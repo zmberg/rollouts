@@ -226,14 +226,14 @@ func (r *rolloutContext) doFinalisingTrafficRouting() (bool, error) {
 func (r *rolloutContext) newTrafficRoutingController(roCtx *rolloutContext) (trafficrouting.TrafficRoutingController, error) {
 	canary := roCtx.rollout.Spec.Strategy.Canary
 	switch canary.TrafficRouting[0].Type {
-	case rolloutv1alpha1.TrafficRoutingNginx:
+	case "nginx":
 		gvk := schema.GroupVersionKind{Group: rolloutv1alpha1.GroupVersion.Group, Version: rolloutv1alpha1.GroupVersion.Version, Kind: "Rollout"}
 		return nginx.NewNginxTrafficRouting(r.Client, r.newStatus, nginx.NginxConfig{
 			RolloutName:   r.rollout.Name,
 			RolloutNs:     r.rollout.Namespace,
 			CanaryService: r.canaryService,
 			StableService: r.stableService,
-			TrafficConf:   r.rollout.Spec.Strategy.Canary.TrafficRouting[0].Nginx,
+			TrafficConf:   r.rollout.Spec.Strategy.Canary.TrafficRouting[0].Ingress,
 			OwnerRef:      *metav1.NewControllerRef(r.rollout, gvk),
 		})
 	}
